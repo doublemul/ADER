@@ -129,7 +129,8 @@ dmypy.json
 .pyre/
 
 # Try
-try/
+try.py
+Record.md
 
 # pycharm
 .idea
