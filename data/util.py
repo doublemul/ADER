@@ -30,7 +30,7 @@ def generate_name_Id_map(name, map):
 
 def generate_user_start_map(user_start, userId, time):
     if userId in user_start:
-        user_start[userId] = min(time, user_start[userId])
+        user_start[userId] = max(time, user_start[userId])
     else:
         user_start[userId] = time
     return user_start
@@ -128,12 +128,28 @@ def read_csv(dataset_path):
 
         elif dataset_name.split('-')[0] == 'train':
             # DIGINETICA dataset
+            # with sequence information
             reader = csv.DictReader(f, delimiter=';')
-            for sample in tqdm.tqdm(reader, desc='Loading data'):
+            timeframes = []
+            for sample in reader:
+                timeframes.append(int(sample['timeframe']))
+            converter = 86400.00 / max(timeframes)
+            f.seek(0)
+            reader = csv.DictReader(f, delimiter=';')
+            for sample in tqdm.tqdm(reader, desc='Reformatting data'):
                 user = sample['sessionId']
                 item = sample['itemId']
-                time = sample['eventdate']
-                time = int(datetime.datetime.strptime(time, "%Y-%m-%d").timestamp())
+                date = sample['eventdate']
+                timeframe = int(sample['timeframe'])
+                time = int(datetime.datetime.strptime(date, "%Y-%m-%d").timestamp()) + timeframe * converter
+
+            # # without sequence information
+            # reader = csv.DictReader(f, delimiter=';')
+            # for sample in tqdm.tqdm(reader, desc='Loading data'):
+            #     user = sample['sessionId']
+            #     item = sample['itemId']
+            #     time = sample['eventdate']
+            #     time = int(datetime.datetime.strptime(time, "%Y-%m-%d").timestamp())
 
                 userId = generate_name_Id_map(user, user_map)
                 itemId = generate_name_Id_map(item, item_map)

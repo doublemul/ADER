@@ -100,17 +100,17 @@ def generating_txt(time_part, user_start, test_interval='day'):
     elif test_interval == 'week':
         test_threshold = 86400 * 7
     elif test_interval == 'month':
-        test_threshold = 86400 * 30
+        test_threshold = 86400 * 31
 
     last_time = get_last_time(list(sorted(time_part.keys())))
     for i, period in enumerate(sorted(time_part.keys()), start=1):
         with open('train_' + str(i) + '.txt', 'w') as file_train, \
-                open('test_' + str(i) + '.txt', 'w') as file_test, \
+                open('test_' + str(i) + '.txt', 'w') as file_test,\
                 open('valid_' + str(i) + '.txt', 'w') as file_valid:
             for [userId, itemId, time] in time_part[period]:
                 if user_start[userId] <= last_time[i-1] - test_threshold * 2:
                     file_train.write('%d %d\n' % (userId, itemId))
-                elif user_start[userId] <= last_time[i-1] - test_threshold:
+                elif user_start[userId] <= last_time[i-1] - test_threshold * 1:
                     file_valid.write('%d %d\n' % (userId, itemId))
                 elif user_start[userId] > last_time[i-1] - test_threshold:
                     file_test.write('%d %d\n' % (userId, itemId))
