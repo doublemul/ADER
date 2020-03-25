@@ -128,9 +128,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Try
-try.py
+# Record
 Record.md
+WorkLog.md
 
 # pycharm
 .idea
@@ -140,5 +140,3 @@ data/datasets
 data/train-item-views_results
 data/yoochoose-clicks_results
 
-# delete
-delete/
