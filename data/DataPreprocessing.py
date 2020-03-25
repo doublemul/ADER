@@ -191,7 +191,7 @@ if __name__ == '__main__':
 
     print('Start preprocess ' + dataset_name + ':')
     # load data and get the session and item lookup table
-    os.chdir('raw_dataset')
+    os.chdir('dataset')
     sess_map, item_map, reformed_data = read_data(dataset_name)
     if dataset_name.split('.')[0] == 'yoochoose-clicks':
         if not os.path.isdir(os.path.join('..', 'YOOCHOOSE')):
