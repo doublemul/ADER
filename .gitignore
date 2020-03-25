@@ -136,7 +136,6 @@ WorkLog.md
 .idea
 
 # data
-data/datasets
-data/train-item-views_results
-data/yoochoose-clicks_results
+data/raw_dataset
+
 
