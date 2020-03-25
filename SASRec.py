@@ -78,6 +78,18 @@ class SASRec():
         self.test_logits = tf.reshape(self.test_logits, [tf.shape(self.input_seq)[0], args.maxlen, max_item])
         self.test_logits = self.test_logits[:, -1, :]
 
+        # neg
+        self.test_neg_item = tf.placeholder(tf.int32, shape=101)
+        test_neg_item_emb = tf.nn.embedding_lookup(item_emb_table, self.test_neg_item)
+        self.test_neg_logits = tf.matmul(seq_emb, tf.transpose(test_neg_item_emb))
+        self.test_neg_logits = tf.reshape(self.test_neg_logits, [tf.shape(self.input_seq)[0], args.maxlen, 101])
+        self.test_neg_logits = self.test_neg_logits[:, -1, :]
+        # seq
+        self.test_seq_item = tf.placeholder(tf.int32, shape=max_item)
+        test_seq_item_emb = tf.nn.embedding_lookup(item_emb_table, self.test_seq_item)
+        self.test_seq_logits = tf.matmul(seq_emb, tf.transpose(test_seq_item_emb))
+        self.test_seq_logits = tf.reshape(self.test_seq_logits, [tf.shape(self.input_seq)[0], args.maxlen, max_item])
+
         # prediction layer
         self.pos_logits = tf.reduce_sum(pos_emb * seq_emb, -1)
         self.neg_logits = tf.reduce_sum(neg_emb * seq_emb, -1)
@@ -109,3 +121,11 @@ class SASRec():
     def predict(self, sess, seq, item_idx):
         return sess.run(self.test_logits,
                         {self.input_seq: seq, self.test_item: item_idx, self.is_training: False})
+
+    def predict_neg(self, sess, seq, item_idx):
+        return sess.run(self.test_neg_logits,
+                        {self.input_seq: seq, self.test_neg_item: item_idx, self.is_training: False})
+
+    def predict_seq(self, sess, seq, item_idx):
+        return sess.run(self.test_seq_logits,
+                        {self.input_seq: seq, self.test_seq_item: item_idx, self.is_training: False})

@@ -7,14 +7,18 @@
 import random
 import copy
 import numpy as np
+from tqdm import tqdm
 from collections import defaultdict
 
 
-def load_data(dataset_name, item_set, is_train=True, remove_item=False):
+def load_data(dataset_name, item_set, is_train=True, remove_item=False, logs=None):
     # Load the dataset
     Sessions = defaultdict(list)
-    with open('data/%s.txt' % dataset_name, 'r') as f:
+    removed_num = 0
+    total_num = 0
+    with open('%s.txt' % dataset_name, 'r') as f:
         for line in f:
+            total_num += 1
             sessId, itemId = line.rstrip().split(' ')
             sessId = int(sessId)
             itemId = int(itemId)
@@ -24,11 +28,17 @@ def load_data(dataset_name, item_set, is_train=True, remove_item=False):
                 item_set.add(itemId)
             else:
                 if itemId not in item_set:
+                    removed_num += 1
                     continue
             Sessions[sessId].append(itemId)
+    if not is_train:
+        info = 'original total number of action: %d, removed number of action: %d.' % (total_num, removed_num)
+        logs.write(info + '\n')
+    # info = 'Total number of action: %d, removed number of action: %d' % (total_num, removed_num)
+    # with open('data_args.txt', 'w') as f:
+    #     f.write(info + '\n')
     sessions = list(Sessions.values())
     del Sessions
-
     return sessions
 
 
@@ -40,7 +50,6 @@ def random_neg(max_item, ts):
 
 
 def sample(user_train, max_item, maxlen):
-
     session = random.choice(user_train)
     while len(session) <= 1:
         session = random.choice(user_train)
@@ -66,7 +75,6 @@ def sample(user_train, max_item, maxlen):
 
 
 def sampler(user_train, max_item, batch_size, maxlen):
-
     SEED = random.randint(0, 2e9)
     random.seed(SEED)
 
@@ -77,37 +85,68 @@ def sampler(user_train, max_item, batch_size, maxlen):
     return zip(*one_batch)
 
 
-def evaluate(sessions, max_item, model, args, sess):
+def evaluate(inputs, max_item, model, args, sess, mode):
+    MRR_20 = 0.0
+    RECALL_20 = 0.0
+    ranks = []
 
-    MRR = 0.0
-    RECALL = 0.0
-    valid_user = 0.0
+    sess_num = len(inputs)
 
-    sess_num = len(sessions)
+    batch_num = int(sess_num / args.test_batch)
 
-    if sess_num > 10000:
-        sess_indices = random.sample(range(sess_num), 10000)
-    else:
-        sess_indices = range(sess_num)
+    for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b', desc=mode):
+    # for _ in range(batch_num):
+        sess_indices = random.sample(range(sess_num), args.test_batch)
+        ground_truth = []
+        seq = []
+        truth = []
+        for i, sess_index in enumerate(sess_indices):
+            length = len(inputs[sess_index])
+            if length <= 2:
+                seq.append([inputs[sess_index][0]])
+            elif length > (args.maxlen + 1):
+                seq.append(inputs[sess_index][length-args.maxlen-1:-1])
+            else:
+                seq.append(inputs[sess_index][:-1])
+            ground_truth.append(copy.deepcopy(inputs[sess_index][-1]))
+            while len(seq[i]) < args.maxlen:
+                seq[i].insert(0, 0)
+            pos = copy.deepcopy(seq[i])
+            pos.append(copy.deepcopy(inputs[sess_index][-1]))
+            pos = pos[1:]
+            truth.append(pos)
 
-    for sess_index in sess_indices:
-        session = copy.deepcopy(sessions[sess_index])
-        while len(session) <= args.maxlen:
-            session.insert(0, 0)
+        if args.neg_sample:
+            for i in range(len(seq)):
+                item_set = set(seq[i])
+                item_set.add(0)
+                item_idx = [ground_truth[i]]
+                for _ in range(args.neg_sample):
+                    t = np.random.randint(1, max_item + 1)
+                    while t in item_set:
+                        t = np.random.randint(1, max_item + 1)
+                    item_idx.append(t)
+                predictions = -model.predict_neg(sess, [seq[i]], item_idx)
+                predictions = predictions[0]
+                ranks.append(predictions.argsort().argsort()[0])
+        else:
+            predictions = -model.predict(sess, seq, range(1, max_item+1))
+            for i, prediction in enumerate(predictions):
+                ranks.append(prediction.argsort().argsort()[ground_truth[i]-1])
 
-        ground_truth = session[-1]
-        seq = session[:args.maxlen]
+            # predictions = -model.predict_seq(sess, seq, range(1, max_item+1))
+            # predictions = predictions.argsort(axis=-1).argsort(axis=-1)
+            # predictions = predictions.reshape(-1, np.shape(predictions)[-1])
+            # truth = np.array(truth).reshape(-1)
+            # ranks = predictions[np.arange(np.shape(predictions)[0]), truth-1]
+            # ranks = ranks[np.where(truth != 0)]
 
-        predictions = -model.predict(sess, [seq], range(1, max_item + 1))
-        predictions = predictions[0]
-        rank = predictions.argsort().argsort()[ground_truth - 1]
+    valid_user = len(ranks)
+    valid_ranks_20 = list(filter(lambda x: x < 20, ranks))
+    valid_ranks_10 = list(filter(lambda x: x < 10, ranks))
+    RECALL_20 = len(valid_ranks_20)
+    MRR_20 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_20))
+    RECALL_10 = len(valid_ranks_10)
+    MRR_10 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_10))
 
-        valid_user += 1
-
-        if rank < 20:
-            MRR += 1.0 / (rank + 1)
-            RECALL += 1
-        if valid_user % 1000 == 0:
-            print('.', end='')
-
-    return MRR / valid_user, RECALL / valid_user
+    return MRR_20 / valid_user, RECALL_20 / valid_user, MRR_10 / valid_user, RECALL_10 / valid_user

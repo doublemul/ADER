@@ -20,6 +20,12 @@ def parse(path):
 
 
 def generate_name_Id_map(name, map):
+    """
+    Given a name and map, return corresponding Id. If name not in map, generate a new Id.
+    :param name: session or item name in dataset
+    :param map: existing map, a dictionary: map[name]=Id
+    :return: Id: allocated Id of the corresponding name
+    """
     if name in map:
         Id = map[name]
     else:
@@ -28,16 +34,30 @@ def generate_name_Id_map(name, map):
     return Id
 
 
-def generate_user_start_map(user_start, userId, time):
-    if userId in user_start:
-        user_start[userId] = max(time, user_start[userId])
+def generate_sess_end_map(sess_end, sessId, time):
+    """
+    Generate map recording the session end time.
+    :param sess_end: the map recording session end time, a dictionary see_end[sessId]=end_time
+    :param sessId:session Id of new action
+    :param time:time of new action
+    :return: sess_end: the map recording session end time, a dictionary see_end[sessId]=end_time
+    """
+    if sessId in sess_end:
+        sess_end[sessId] = max(time, sess_end[sessId])
     else:
-        user_start[userId] = time
-    return user_start
+        sess_end[sessId] = time
+    return sess_end
 
 
 def read_gz(dataset_path):
-    user_map = {}
+    """
+    Read .gz type dataset file including Amazon reviews dataset and Steam dataset
+    :param dataset_path: dataset path
+    :return: sess_map: map[session name in row dataset]=session Id in system
+    :return: item_map: map[item name in row dataset]=item Id in system
+    :return: reformed_data: a list: each element is a action, which is a list of [sessId, itemId, time]
+    """
+    sess_map = {}
     item_map = {}
     reformed_data = []
 
@@ -51,9 +71,9 @@ def read_gz(dataset_path):
                 user = sample['reviewerID']
                 item = sample['asin']
                 time = sample['unixReviewTime']
-                userId = generate_name_Id_map(user, user_map)
+                sessId = generate_name_Id_map(user, sess_map)
                 itemId = generate_name_Id_map(item, item_map)
-                reformed_data.append([userId, itemId, time])
+                reformed_data.append([sessId, itemId, time])
 
         elif dataset_name.split('_')[0] == 'steam':
             # Steam dataset
@@ -63,16 +83,23 @@ def read_gz(dataset_path):
                 item = sample['product_id']
                 time = sample['date']
                 time = int(datetime.datetime.strptime(time, "%Y-%m-%d").timestamp())
-                userId = generate_name_Id_map(user, user_map)
+                sessId = generate_name_Id_map(user, sess_map)
                 itemId = generate_name_Id_map(item, item_map)
-                reformed_data.append([userId, itemId, time])
+                reformed_data.append([sessId, itemId, time])
         else:
             print("Error: new gz data file!")
-    return user_map, item_map, reformed_data
+    return sess_map, item_map, reformed_data
 
 
 def read_dat(dataset_path):
-    user_map = {}
+    """
+    Read .dat type dataset file including MovieLens 1M dataset and Yoochoose dataset
+    :param dataset_path: dataset path
+    :return: sess_map: map[session name in row dataset]=session Id in system
+    :return: item_map: map[item name in row dataset]=item Id in system
+    :return: reformed_data: a list: each element is a action, which is a list of [sessId, itemId, time]
+    """
+    sess_map = {}
     item_map = {}
     reformed_data = []
 
@@ -82,32 +109,39 @@ def read_dat(dataset_path):
         if dataset_name.split('-')[0] == 'ml':
             # MovieLens 1M dataset
             for sample in tqdm.tqdm(f, desc='Loading data'):
-                user = sample.split('::')[0]
+                sess = sample.split('::')[0]
                 item = sample.split('::')[1]
                 time = int(sample.split('::')[3])
 
-                userId = generate_name_Id_map(user, user_map)
+                sessId = generate_name_Id_map(sess, sess_map)
                 itemId = generate_name_Id_map(item, item_map)
-                reformed_data.append([userId, itemId, time])
+                reformed_data.append([sessId, itemId, time])
 
         elif dataset_name.split('-')[0] == 'yoochoose':
             # YOOCHOOSE dataset
             for sample in tqdm.tqdm(f, desc='Loading data'):
-                user = sample.split(',')[0]
+                sess = sample.split(',')[0]
                 item = sample.split(',')[2]
                 time = sample.split(',')[1]
                 time = int(datetime.datetime.strptime(time, "%Y-%m-%dT%H:%M:%S.%fZ").timestamp())
 
-                userId = generate_name_Id_map(user, user_map)
+                sessId = generate_name_Id_map(sess, sess_map)
                 itemId = generate_name_Id_map(item, item_map)
-                reformed_data.append([userId, itemId, time])
+                reformed_data.append([sessId, itemId, time])
         else:
             print("Error: new dat data file!")
-    return user_map, item_map, reformed_data
+    return sess_map, item_map, reformed_data
 
 
 def read_csv(dataset_path):
-    user_map = {}
+    """
+    Read .csv type dataset file including MovieLens 20M dataset and DIGINETICA dataset
+    :param dataset_path: dataset path
+    :return: sess_map: map[session name in row dataset]=session Id in system
+    :return: item_map: map[item name in row dataset]=item Id in system
+    :return: reformed_data: a list: each element is a action, which is a list of [sessId, itemId, time]
+    """
+    sess_map = {}
     item_map = {}
     reformed_data = []
 
@@ -118,16 +152,17 @@ def read_csv(dataset_path):
             # MovieLens 20M dataset
             reader = csv.DictReader(f)
             for sample in tqdm.tqdm(reader, desc='Loading data'):
-                user = sample['userId']
+                sess = sample['userId']
                 item = sample['movieId']
                 time = sample['timestamp']
 
-                userId = generate_name_Id_map(user, user_map)
+                sessId = generate_name_Id_map(sess, sess_map)
                 itemId = generate_name_Id_map(item, item_map)
-                reformed_data.append([userId, itemId, time])
+                reformed_data.append([sessId, itemId, time])
 
         elif dataset_name.split('-')[0] == 'train':
             # DIGINETICA dataset
+            ###############################
             # with sequence information
             reader = csv.DictReader(f, delimiter=';')
             timeframes = []
@@ -137,26 +172,26 @@ def read_csv(dataset_path):
             f.seek(0)
             reader = csv.DictReader(f, delimiter=';')
             for sample in tqdm.tqdm(reader, desc='Reformatting data'):
-                user = sample['sessionId']
+                sess = sample['sessionId']
                 item = sample['itemId']
                 date = sample['eventdate']
                 timeframe = int(sample['timeframe'])
                 time = int(datetime.datetime.strptime(date, "%Y-%m-%d").timestamp()) + timeframe * converter
-
+            ##############################
             # # without sequence information
             # reader = csv.DictReader(f, delimiter=';')
             # for sample in tqdm.tqdm(reader, desc='Loading data'):
-            #     user = sample['sessionId']
+            #     sess = sample['sessionId']
             #     item = sample['itemId']
             #     time = sample['eventdate']
             #     time = int(datetime.datetime.strptime(time, "%Y-%m-%d").timestamp())
-
-                userId = generate_name_Id_map(user, user_map)
+            ##########################
+                sessId = generate_name_Id_map(sess, sess_map)
                 itemId = generate_name_Id_map(item, item_map)
-                reformed_data.append([userId, itemId, time])
+                reformed_data.append([sessId, itemId, time])
         else:
             print("Error: new csv data file!")
-    return user_map, item_map, reformed_data
+    return sess_map, item_map, reformed_data
 
 
 def plot_stat(time_fraction):
@@ -254,33 +289,38 @@ def plot_stat(time_fraction):
     plt.close()
 
 
-def get_last_time(peroids):
-    if peroids[0] < 9999:
+def get_last_time(periods):
+    """
+    Find the last second of the period in unix form
+    :param periods: YYYY if year, YYYYMM if month, YYYYMMDD if day
+    :return: the last second of the period in unix form
+    """
+    if periods[0] < 9999:
         # periods in year
-        last_time = map(lambda x: int(datetime.datetime.strptime(str(x + 1), "%Y").timestamp()) - 1, peroids)
-    elif peroids[0] < 999999:
+        last_time = map(lambda x: int(datetime.datetime.strptime(str(x + 1), "%Y").timestamp()) - 1, periods)
+    elif periods[0] < 999999:
         # periods in month
-        new_peroids = []
-        for peroid in peroids:
-            year = peroid // 100
-            month = peroid % 100
+        new_periods = []
+        for period in periods:
+            year = period // 100
+            month = period % 100
             if month == 12:
                 year += 1
                 month = 1
             else:
                 month += 1
-            new_peroids.append(str(year) + '-' + str(month))
-        last_time = map(lambda x: int(datetime.datetime.strptime(x, "%Y-%m").timestamp()) - 1, new_peroids)
+            new_periods.append(str(year) + '-' + str(month))
+        last_time = map(lambda x: int(datetime.datetime.strptime(x, "%Y-%m").timestamp()) - 1, new_periods)
     else:
         # periods in day
-        new_peroids = []
-        for peroid in peroids:
-            day = peroid % 100
-            yearmonth = peroid // 100
+        new_periods = []
+        for period in periods:
+            day = period % 100
+            yearmonth = period // 100
             month = yearmonth % 100
             year = yearmonth // 100
-            new_peroids.append(str(year) + '-' + str(month) + '-' + str(day))
-        last_time = map(lambda x: int(datetime.datetime.strptime(x, "%Y-%m-%d").timestamp()) + 86400-1, new_peroids)
+            new_periods.append(str(year) + '-' + str(month) + '-' + str(day))
+        last_time = map(lambda x: int(datetime.datetime.strptime(x, "%Y-%m-%d").timestamp()) + 86400-1, new_periods)
     return list(last_time)
 
 

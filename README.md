@@ -11,10 +11,6 @@ This is an implementation of continual learning on Python and TensorFlow for ses
 ## Requirements
 Python ???, TensorFlow ???, and other common packages listed in `requirements.txt`.
 
-
-## Work Log
-The activities of every day is recorded - see the [WorkLog.md](WorkLog.md) file for details.
-
 ## License 
 [![License](http://img.shields.io/:license-mit-blue.svg?style=flat-square)](http://badges.mit-license.org)
 
