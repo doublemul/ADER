@@ -50,12 +50,12 @@ def read_data(dataset_path):
     return sess_map, item_map, reformed_data
 
 
-def short_remove(reformed_data, threshold_item, threshold_sess):
+def short_remove(reformed_data, args):
     """
     Remove data according to threshold
     :param reformed_data: loaded data, a list: each element is a action, which is a list of [sessId, itemId, time]
-    :param threshold_item: minimum number of appearance time of item -1
-    :param threshold_sess: minimum length of session -1
+    :param args.threshold_item: minimum number of appearance time of item -1
+    :param args.threshold_sess: minimum length of session -1
     :return removed_data: result data after removing
     :return sess_end: a map recording session end time, a dictionary sess_end[sessId]=end_time
     """
@@ -69,13 +69,13 @@ def short_remove(reformed_data, threshold_item, threshold_sess):
     item_counter = defaultdict(lambda: 0)
     for [_, itemId, _] in removed_data:
         item_counter[itemId] += 1
-    removed_data = list(filter(lambda x: item_counter[x[1]] > threshold_item, removed_data))
+    removed_data = list(filter(lambda x: item_counter[x[1]] > args.threshold_item, removed_data))
 
     # remove session whose length less or equal to threshold_sess
     sess_counter = defaultdict(lambda: 0)
     for [userId, _, _] in removed_data:
         sess_counter[userId] += 1
-    removed_data = list(filter(lambda x: sess_counter[x[0]] > threshold_sess, removed_data))
+    removed_data = list(filter(lambda x: sess_counter[x[0]] > args.threshold_sess, removed_data))
 
     # print information of removed data
     print('Number of users after pre-processing:', len(set(map(lambda x: x[0], removed_data))))
@@ -92,27 +92,27 @@ def short_remove(reformed_data, threshold_item, threshold_sess):
     return removed_data, sess_end
 
 
-def time_partition(removed_data, session_end, interval='month', is_time_fraction=True):
+def time_partition(removed_data, session_end, args):
     """
     Partition data according to time periods
     :param removed_data: input data, a list: each element is a action, which is a list of [sessId, itemId, time]
     :param session_end: a dictionary recording session end time, session_end[sessId]=end_time
-    :param interval: time interval for partition
-    :param is_time_fraction: boolean, weather partition or not
+    :param args.time_fraction: time interval for partition
+    :param args.is_time_fraction: boolean, weather partition or not
     :return: time_fraction: a dictionary, the keys are different time periods,
     value is a list of actions in that time period
     """
     time_fraction = dict()
 
-    if is_time_fraction:
+    if args.is_time_fraction:
         for [sessId, itemId, time] in removed_data:
             date = datetime.datetime.fromtimestamp(session_end[sessId]).isoformat().split('T')[0]
             # find period of each action
-            if interval == 'day':
+            if args.time_fraction == 'day':
                 period = int(date.split('-')[0] + date.split('-')[1] + date.split('-')[2])
-            elif interval == 'month':
+            elif args.time_fraction == 'month':
                 period = int(date.split('-')[0] + date.split('-')[1])
-            elif interval == 'year':
+            elif args.time_fraction == 'year':
                 period = int(date.split('-')[0])
             else:
                 print('invalid time interval')
@@ -122,44 +122,50 @@ def time_partition(removed_data, session_end, interval='month', is_time_fraction
             # partition data according to period
             time_fraction[period].append([sessId, itemId, time])
 
+        # combine first and second time fraction in DIGINETICA and remove the last one
+        if os.getcwd().split('/')[-1] == 'DIGINETICA' and args.time_fraction == 'month':
+            periods = sorted(time_fraction.keys())
+            time_fraction[periods[1]].extend(time_fraction[periods[0]])
+            del time_fraction[periods[-1]]
+            del time_fraction[periods[0]]
+
     else:
+        if args.yoochoose_select and os.getcwd().split('/')[-1] == 'YOOCHOOSE':
+            threshold = np.percentile(list(map(lambda x: x[2], removed_data)), (1-args.yoochoose_select)*100)
+            print(threshold)
+            removed_data = list(filter(lambda x: x[2] > threshold, removed_data))
         # if not partition, put all actions in the last period
         max_time = max(map(lambda x: x[2], removed_data))
         date = datetime.datetime.fromtimestamp(max_time).isoformat().split('T')[0]
         period = int(date.split('-')[0] + date.split('-')[1] + date.split('-')[2])
         time_fraction[period] = removed_data
 
-    if os.getcwd().split('/')[-1] == 'DIGINETICA' and interval == 'month' and is_time_fraction:
-        periods = sorted(time_fraction.keys())
-        time_fraction[periods[1]].extend(time_fraction[periods[0]])
-        del time_fraction[periods[-1]]
-        del time_fraction[periods[0]]
     return time_fraction
 
 
-def generating_txt(time_fraction, sess_end, is_time_fraction, test_interval='day'):
+def generating_txt(time_fraction, sess_end, args):
     """
     Generate final txt file
     :param time_fraction: input data, a dictionary, the keys are different time periods,
     value is a list of actions in that time period
     :param sess_end: session end time map, sess_map[sessId]=end_time
-    :param test_interval: time interval for test and valid sets
+    :param args.test_fraction: time interval for test and valid sets
     """
     # sort action according to time sequence and session
     for period in sorted(time_fraction.keys()):
         time_fraction[period].sort(key=lambda x: x[2])
         time_fraction[period].sort(key=lambda x: x[0])
 
-    if test_interval == 'day':
+    if args.test_fraction == 'day':
         test_threshold = 86400
-    elif test_interval == 'week':
+    elif args.test_fraction == 'week':
         test_threshold = 86400 * 7
-    elif test_interval == 'month':
+    elif args.test_fraction == 'month':
         test_threshold = 86400 * 31
     # get the last unix time of each period
     last_time = get_last_time(list(sorted(time_fraction.keys())))
 
-    if is_time_fraction:
+    if args.is_time_fraction:
         for i, period in enumerate(sorted(time_fraction.keys()), start=1):
             with open('train_' + str(i) + '.txt', 'w') as file_train, \
                     open('test_' + str(i) + '.txt', 'w') as file_test, \
@@ -187,48 +193,38 @@ def generating_txt(time_fraction, sess_end, is_time_fraction, test_interval='day
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default='train-item-views.csv', type=str)
+    parser.add_argument('--dataset', default='train-item-views.csv', type=str)  # 'yoochoose-clicks.dat'
     parser.add_argument('--time_fraction', default='month', type=str)
     parser.add_argument('--test_fraction', default='day', type=str)
     parser.add_argument('--threshold_sess', default=1, type=int)
     parser.add_argument('--threshold_item', default=4, type=int)
     parser.add_argument('--is_time_fraction', default=False, type=str2bool)
+    parser.add_argument('--yoochoose_select', default=0.25, type=float)
     args = parser.parse_args()
 
-    # dataset_name = 'yoochoose-clicks.dat'
-    # dataset_name = 'train-item-views.csv'
-    dataset_name = args.dataset
-    # time_fraction = 'month'
-    time_fraction = args.time_fraction
-    # test_fraction = 'day'
-    test_fraction = args.test_fraction
-    # threshold_sess = 1
-    # threshold_item = 4
-    threshold_sess = args.threshold_sess
-    threshold_item = args.threshold_item
-    # is_time_fraction = False
-    is_time_fraction = args.is_time_fraction
+    print('Start preprocess ' + args.dataset + ':')
 
-    print('Start preprocess ' + dataset_name + ':')
     # load data and get the session and item lookup table
     os.chdir('dataset')
-    sess_map, item_map, reformed_data = read_data(dataset_name)
-    if dataset_name.split('.')[0] == 'yoochoose-clicks':
+    sess_map, item_map, reformed_data = read_data(args.dataset)
+
+    if args.dataset.split('.')[0] == 'yoochoose-clicks':
         if not os.path.isdir(os.path.join('..', 'YOOCHOOSE')):
             os.makedirs(os.path.join('..', 'YOOCHOOSE'))
         os.chdir(os.path.join('..', 'YOOCHOOSE'))
-    elif dataset_name.split('.')[0] == 'train-item-views':
+    elif args.dataset.split('.')[0] == 'train-item-views':
         if not os.path.isdir(os.path.join('..', 'DIGINETICA')):
             os.makedirs(os.path.join('..', 'DIGINETICA'))
         os.chdir(os.path.join('..', 'DIGINETICA'))
+
     # remove data according to occurrences time
-    removed_data, sess_end = short_remove(reformed_data, threshold_item, threshold_sess)
+    removed_data, sess_end = short_remove(reformed_data, args)
+
     # partition data according to time periods
-    time_fraction = time_partition(removed_data, sess_end, interval=time_fraction, is_time_fraction=is_time_fraction)
+    time_fraction = time_partition(removed_data, sess_end, args)
     # generate final txt file
-    generating_txt(time_fraction, sess_end, is_time_fraction=is_time_fraction, test_interval=test_fraction)
+    generating_txt(time_fraction, sess_end, args)
 
-    if is_time_fraction:
-        plot_stat(time_fraction)
+    if args.is_time_fraction: plot_stat(time_fraction)
 
-    print(dataset_name + ' finish!')
+    print(args.dataset + ' finish!')
