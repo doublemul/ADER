@@ -4,9 +4,21 @@
 # @Author       : Xiaoyu LIN
 # @File         : DataPreprocessing.py
 # @Description  :
+import argparse
 import os
 from datetime import datetime
 from data.util import *
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
 def read_data(dataset_path):
@@ -120,6 +132,7 @@ def time_partition(removed_data, session_end, interval='month', is_time_fraction
     if os.getcwd().split('/')[-1] == 'DIGINETICA' and interval == 'month' and is_time_fraction:
         periods = sorted(time_fraction.keys())
         time_fraction[periods[1]].extend(time_fraction[periods[0]])
+        del time_fraction[periods[-1]]
         del time_fraction[periods[0]]
     return time_fraction
 
@@ -149,7 +162,7 @@ def generating_txt(time_fraction, sess_end, is_time_fraction, test_interval='day
     if is_time_fraction:
         for i, period in enumerate(sorted(time_fraction.keys()), start=1):
             with open('train_' + str(i) + '.txt', 'w') as file_train, \
-                    open('test_' + str(i) + '.txt', 'w') as file_test,\
+                    open('test_' + str(i) + '.txt', 'w') as file_test, \
                     open('valid_' + str(i) + '.txt', 'w') as file_valid:
                 for [userId, itemId, time] in time_fraction[period]:
                     if sess_end[userId] <= last_time[i - 1] - test_threshold * 2:
@@ -171,23 +184,30 @@ def generating_txt(time_fraction, sess_end, is_time_fraction, test_interval='day
                     file_test.write('%d %d\n' % (userId, itemId))
 
 
-
 if __name__ == '__main__':
 
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('--dataset', required=True)
-    # parser.add_argument('--threshold', required=True)
-    # args = parser.parse_args()
-    # dataset_full_name = args.dataset
-    # threshold = int(args.threshold)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', default='train-item-views.csv', type=str)
+    parser.add_argument('--time_fraction', default='month', type=str)
+    parser.add_argument('--test_fraction', default='day', type=str)
+    parser.add_argument('--threshold_sess', default=1, type=int)
+    parser.add_argument('--threshold_item', default=4, type=int)
+    parser.add_argument('--is_time_fraction', default=False, type=str2bool)
+    args = parser.parse_args()
 
-    dataset_name = 'yoochoose-clicks.dat'
+    # dataset_name = 'yoochoose-clicks.dat'
     # dataset_name = 'train-item-views.csv'
-    time_fraction = 'month'
-    test_fraction = 'day'
-    threshold_sess = 1
-    threshold_item = 4
-    is_time_fraction = False
+    dataset_name = args.dataset
+    # time_fraction = 'month'
+    time_fraction = args.time_fraction
+    # test_fraction = 'day'
+    test_fraction = args.test_fraction
+    # threshold_sess = 1
+    # threshold_item = 4
+    threshold_sess = args.threshold_sess
+    threshold_item = args.threshold_item
+    # is_time_fraction = False
+    is_time_fraction = args.is_time_fraction
 
     print('Start preprocess ' + dataset_name + ':')
     # load data and get the session and item lookup table

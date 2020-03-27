@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import tqdm
 import datetime
 import numpy as np
-
+import copy
 
 def parse(path):
     g = gzip.open(path, 'r')
@@ -196,18 +196,22 @@ def read_csv(dataset_path):
 
 def plot_stat(time_fraction):
 
-    total_item, item_num, user_num, action_num = [], [], [], []
-    total_item_set, user_num_set, item_num_set = set(), set(), set()
+    total_item, item_num, user_num, action_num, new_num, old_num = [], [], [], [], [], []
+    total_item_set, user_num_set, item_num_set, old_item_set = set(), set(), set(), set()
 
     length_counter = defaultdict(lambda: 0)
     session_length = []
-
     for peroid in sorted(time_fraction.keys()):
+        new, old = 0, 0
         for [userId, itemId, _] in time_fraction[peroid]:
             total_item_set.add(itemId)
             item_num_set.add(itemId)
             user_num_set.add(userId)
             length_counter[userId] += 1
+            if itemId not in old_item_set:
+                new += 1
+            else:
+                old += 1
 
         action_num.append(len(time_fraction[peroid]))
         user_num.append(len(user_num_set))
@@ -218,6 +222,10 @@ def plot_stat(time_fraction):
 
         session_length.extend(length_counter.values())
         length_counter = defaultdict(lambda: 0)
+
+        old_item_set = copy.deepcopy(total_item_set)
+        new_num.append(new)
+        old_num.append(old)
 
     plt.figure()
     plt.title('Number of item vs time')
@@ -285,6 +293,22 @@ def plot_stat(time_fraction):
     axes2.set_ylabel('# action')
     plt.xticks(range(len(time_fraction.keys())), sorted(time_fraction.keys()))
     plt.savefig('sta_action.pdf')
+    plt.show()
+    plt.close()
+
+    plt.figure()
+    plt.title('Number of actions on new item vs old item')
+    width = 0.3
+    plt.bar(np.arange(len(time_fraction.keys())), old_num, width, label='old item')
+    for x, y in zip(np.arange(len(time_fraction.keys())), old_num):
+        plt.text(x, y, '%d' % y, ha='center', va='center', rotation=90, size='x-small')
+    plt.bar(np.arange(len(time_fraction.keys())) + width, new_num, width, label='new item')
+    for x, y in zip(np.arange(len(time_fraction.keys())), new_num):
+        plt.text(x + width, y, '%d' % y, ha='center', va='center', rotation=90, size='x-small')
+    plt.ylabel('# actions')
+    plt.xticks(range(len(time_fraction.keys())), sorted(time_fraction.keys()))
+    plt.legend()
+    plt.savefig('sta_new_old.pdf')
     plt.show()
     plt.close()
 

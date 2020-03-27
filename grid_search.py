@@ -45,15 +45,13 @@ if __name__ == '__main__':
         list(map((lambda p, info: [p.wait(), print('test ' + info + str(p.poll()))]), test_p, save_dirs))
 
     else:
-        parallel_num = 4
-        num_gpu = 2
-        early_stop = cmd + '--mode=early_stop '
+        parallel_num, i = 2, 0
+        early_stop = cmd + '--mode=early_stop --is_joint=True --batch_size=2048 --test_batch=128 '
         dirs = [None] * parallel_num
         p = [None] * parallel_num
-        i = 0
-        device_num = 0
+
         for num_heads in [1, 2, 3]:
-            for num_blocks in [1, 2, 3]:
+            for num_blocks in [2, 3]:
                 for lr in [0.0001, 0.0005, 0.001]:
                     try:
                         returncodes = list(map(lambda p: p.poll(), p))
@@ -65,20 +63,8 @@ if __name__ == '__main__':
                         pass
                     dirs[i] = 'Heads%dBlocks%dLr%f ' % (num_heads, num_blocks, lr)
                     early_stop_cmd = early_stop + '--save_dir=%s --num_heads=%d --num_blocks=%d --lr=%f ' \
-                                                  '--device_num=%d' % (dirs[i], num_heads, num_blocks, lr, device_num)
-                    p[i] = subprocess.Popen(early_stop_cmd, shell=True,
-                                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-
-                    time.sleep(60)
-                    while p[i].poll() and p[i].poll() != 0:
-                        device_num += 1
-                        if device_num == num_gpu:
-                            device_num = 0
-                        early_stop_cmd = early_stop + '--save_dir=%s --num_heads=%d --num_blocks=%d --lr=%f ' \
-                                                      '--device_num=%d' % (dirs[i], num_heads, num_blocks, lr, device_num)
-                        p[i] = subprocess.Popen(early_stop_cmd, shell=True,
-                                                stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-                        time.sleep(60)
+                                                  '--device_num=%d' % (dirs[i], num_heads, num_blocks, lr, 1)
+                    p[i] = subprocess.Popen(early_stop_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
                     i += 1
                     if i == parallel_num:
                         i = 0

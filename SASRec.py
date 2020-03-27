@@ -3,6 +3,7 @@ import tensorflow.compat.v1 as tf
 
 class SASRec():
     def __init__(self, max_item, args, reuse=None):
+        self.args = args
         self.is_training = tf.placeholder(tf.bool, shape=())
         self.input_seq = tf.placeholder(tf.int32, shape=(None, args.maxlen))
         self.pos = tf.placeholder(tf.int32, shape=(None, args.maxlen))
@@ -72,11 +73,9 @@ class SASRec():
         neg_emb = tf.nn.embedding_lookup(item_emb_table, neg)
         seq_emb = tf.reshape(self.seq, [tf.shape(self.input_seq)[0] * args.maxlen, args.hidden_units])
 
-        self.test_item = tf.placeholder(tf.int32, shape=max_item)
-        test_item_emb = tf.nn.embedding_lookup(item_emb_table, self.test_item)
-        self.test_logits = tf.matmul(seq_emb, tf.transpose(test_item_emb))
-        self.test_logits = tf.reshape(self.test_logits, [tf.shape(self.input_seq)[0], args.maxlen, max_item])
-        self.test_logits = self.test_logits[:, -1, :]
+        # predict
+        self.item_emb_table = item_emb_table
+        self.seq_emb = seq_emb
 
         # neg
         self.test_neg_item = tf.placeholder(tf.int32, shape=101)
@@ -119,8 +118,14 @@ class SASRec():
         self.merged = tf.summary.merge_all()
 
     def predict(self, sess, seq, item_idx):
-        return sess.run(self.test_logits,
-                        {self.input_seq: seq, self.test_item: item_idx, self.is_training: False})
+        test_item = tf.placeholder(tf.int32, shape=len(item_idx))
+        test_item_emb = tf.nn.embedding_lookup(self.item_emb_table, test_item)
+        test_logits = tf.matmul(self.seq_emb, tf.transpose(test_item_emb))
+        test_logits = tf.reshape(test_logits, [tf.shape(self.input_seq)[0], self.args.maxlen, len(item_idx)])
+        test_logits = test_logits[:, -1, :]
+        pred = tf.argsort(tf.argsort(-test_logits))
+        return sess.run(pred,
+                        {self.input_seq: seq, test_item: item_idx, self.is_training: False})
 
     def predict_neg(self, sess, seq, item_idx):
         return sess.run(self.test_neg_logits,

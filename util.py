@@ -5,10 +5,12 @@
 # @File         : util.py
 # @Description  :
 import random
+import os
 import copy
 import numpy as np
 from tqdm import tqdm
 from collections import defaultdict
+import matplotlib.pyplot as plt
 
 
 def load_data(dataset_name, item_set, is_train=True, remove_item=False, logs=None):
@@ -34,22 +36,29 @@ def load_data(dataset_name, item_set, is_train=True, remove_item=False, logs=Non
     if not is_train:
         info = 'original total number of action: %d, removed number of action: %d.' % (total_num, removed_num)
         logs.write(info + '\n')
-    # info = 'Total number of action: %d, removed number of action: %d' % (total_num, removed_num)
-    # with open('data_args.txt', 'w') as f:
-    #     f.write(info + '\n')
     sessions = list(Sessions.values())
     del Sessions
     return sessions
 
 
-def random_neg(max_item, ts):
-    neg = np.random.randint(1, max_item)
+def valid_portion(sessions, portion=0.1):
+    sess_num = len(sessions)
+    indices = np.arange(sess_num)
+    np.random.shuffle(indices)
+    train_num = int(np.round(sess_num * (1 - portion)))
+    train_sess = [sessions[i] for i in indices[:train_num]]
+    valid_sess = [sessions[i] for i in indices[train_num:]]
+    return train_sess, valid_sess
+
+
+def random_neg(item_list, ts):
+    neg = random.choice(item_list)
     while neg in ts:
-        neg = np.random.randint(1, max_item)
+        neg = random.choice(item_list)
     return neg
 
 
-def sample(user_train, max_item, maxlen):
+def sample(user_train, item_list, maxlen):
     session = random.choice(user_train)
     while len(session) <= 1:
         session = random.choice(user_train)
@@ -65,7 +74,7 @@ def sample(user_train, max_item, maxlen):
         seq[idx] = itemId
         pos[idx] = nxt
         if nxt != 0:
-            neg[idx] = random_neg(max_item, ts)
+            neg[idx] = random_neg(item_list, ts)
         nxt = itemId
         idx -= 1
         if idx == -1:
@@ -74,33 +83,30 @@ def sample(user_train, max_item, maxlen):
     return seq, pos, neg
 
 
-def sampler(user_train, max_item, batch_size, maxlen):
+def sampler(user_train, item_set, batch_size, maxlen):
     SEED = random.randint(0, 2e9)
     random.seed(SEED)
 
     one_batch = []
     for i in range(batch_size):
-        one_batch.append(sample(user_train, max_item, maxlen))
+        one_batch.append(sample(user_train, item_set, maxlen))
 
     return zip(*one_batch)
 
 
-def evaluate(inputs, max_item, model, args, sess, mode):
+def evaluate(inputs, item_list, model, args, sess, mode):
     MRR_20 = 0.0
     RECALL_20 = 0.0
     ranks = []
-
     sess_num = len(inputs)
-
     batch_num = int(sess_num / args.test_batch)
+    test_item = item_list
 
     for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b', desc=mode):
-    # for _ in range(batch_num):
         sess_indices = random.sample(range(sess_num), args.test_batch)
         ground_truth = []
         seq = []
-        truth = []
-        for i, sess_index in enumerate(sess_indices):
+        for sess_index in sess_indices:
             length = len(inputs[sess_index])
             if length <= 2:
                 seq.append([inputs[sess_index][0]])
@@ -109,37 +115,11 @@ def evaluate(inputs, max_item, model, args, sess, mode):
             else:
                 seq.append(inputs[sess_index][:-1])
             ground_truth.append(copy.deepcopy(inputs[sess_index][-1]))
-            while len(seq[i]) < args.maxlen:
-                seq[i].insert(0, 0)
-            pos = copy.deepcopy(seq[i])
-            pos.append(copy.deepcopy(inputs[sess_index][-1]))
-            pos = pos[1:]
-            truth.append(pos)
+            while len(seq[-1]) < args.maxlen:
+                seq[-1].insert(0, 0)
 
-        if args.neg_sample:
-            for i in range(len(seq)):
-                item_set = set(seq[i])
-                item_set.add(0)
-                item_idx = [ground_truth[i]]
-                for _ in range(args.neg_sample):
-                    t = np.random.randint(1, max_item + 1)
-                    while t in item_set:
-                        t = np.random.randint(1, max_item + 1)
-                    item_idx.append(t)
-                predictions = -model.predict_neg(sess, [seq[i]], item_idx)
-                predictions = predictions[0]
-                ranks.append(predictions.argsort().argsort()[0])
-        else:
-            predictions = -model.predict(sess, seq, range(1, max_item+1))
-            for i, prediction in enumerate(predictions):
-                ranks.append(prediction.argsort().argsort()[ground_truth[i]-1])
-
-            # predictions = -model.predict_seq(sess, seq, range(1, max_item+1))
-            # predictions = predictions.argsort(axis=-1).argsort(axis=-1)
-            # predictions = predictions.reshape(-1, np.shape(predictions)[-1])
-            # truth = np.array(truth).reshape(-1)
-            # ranks = predictions[np.arange(np.shape(predictions)[0]), truth-1]
-            # ranks = ranks[np.where(truth != 0)]
+        predictions = model.predict(sess, seq, test_item)
+        ranks.extend(list(map(lambda label, pred: pred[test_item.index(label)], ground_truth, predictions)))
 
     valid_user = len(ranks)
     valid_ranks_20 = list(filter(lambda x: x < 20, ranks))
@@ -150,3 +130,58 @@ def evaluate(inputs, max_item, model, args, sess, mode):
     MRR_10 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_10))
 
     return MRR_20 / valid_user, RECALL_20 / valid_user, MRR_10 / valid_user, RECALL_10 / valid_user
+
+
+class ContinueLearningPlot:
+    def __init__(self, args):
+        self.args = args
+        self.periods = []
+        self.epochs = []
+        self.MRR20 = []
+        self.RECALL20 = []
+        self.MRR10 = []
+        self.RECALL10 = []
+
+    def add(self, period, epoch, t_test):
+        if period > 1 and epoch < self.epochs[-1]:
+            del self.periods[-1]
+            del self.epochs[-1]
+            del self.MRR20[-1]
+            del self.RECALL20[-1]
+            del self.MRR10[-1]
+            del self.RECALL10[-1]
+
+        self.periods.append(period)
+        self.epochs.append(epoch)
+        self.MRR20.append(t_test[0])
+        self.RECALL20.append(t_test[1])
+        self.MRR10.append(t_test[2])
+        self.RECALL10.append(t_test[3])
+
+    def plot(self):
+        x_label = list(map(lambda period, epoch: 'Period%d-epoch%d' % (period, epoch), self.periods, self.epochs))
+
+        plt.figure()
+        plt.plot(range(len(self.MRR20)), self.MRR20, label='MRR@20')
+        plt.plot(range(len(self.MRR20)), self.MRR10, label='MRR@10')
+        plt.plot(range(len(self.MRR20)), self.RECALL20, label='RECALL20')
+        plt.plot(range(len(self.MRR20)), self.RECALL10, label='RECALL10')
+
+        if self.args.dataset == 'DIGINETICA':
+            NARM_RECALL20 = 0.4970
+            NARM_RECALL10 = 0.3362
+        elif self.args.dataset == 'YOOCHOOSE':
+            NARM_RECALL20 = 0.6973
+            NARM_RECALL10 = 0.5870
+        plt.hlines(NARM_RECALL20, 0, len(self.MRR20)-1, label='NARM_RECALL20')
+        plt.hlines(NARM_RECALL10, 0, len(self.MRR20)-1, label='NARM_RECALL10')
+
+        plt.xticks(range(len(self.MRR20)), x_label, rotation=30)
+        plt.title('Continue learning test results')
+        plt.legend()
+
+        i = 0
+        while os.path.isfile('Coutinue_Learning_result%d.pdf' % i):
+            i += 1
+        plt.savefig('Coutinue_Learning_result%d.pdf' % i)
+        plt.close()
