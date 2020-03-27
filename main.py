@@ -54,6 +54,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', required=True)
     parser.add_argument('--save_dir', required=True)
+    parser.add_argument('--desc', required=True)
     parser.add_argument('--is_joint', default=False, type=str2bool)
     parser.add_argument('--mode', default='early_stop', type=str)
     parser.add_argument('--remove_item', default=True, type=bool)
@@ -62,13 +63,13 @@ if __name__ == '__main__':
     parser.add_argument('--maxlen', default=50, type=int)
     parser.add_argument('--hidden_units', default=150, type=int)
     parser.add_argument('--num_blocks', default=1, type=int)
-    parser.add_argument('--num_epochs', default=100, type=int)
+    parser.add_argument('--num_epochs', default=200, type=int)
     parser.add_argument('--num_heads', default=1, type=int)
     parser.add_argument('--dropout_rate', default=0.5, type=float)
     parser.add_argument('--l2_emb', default=0.0, type=float)
-    parser.add_argument('--display_interval', default=10, type=int)
+    parser.add_argument('--display_interval', default=5, type=int)
     parser.add_argument('--device_num', default=0, type=int)
-    parser.add_argument('--test_batch', default=128, type=int)
+    parser.add_argument('--test_batch', default=64, type=int)
     parser.add_argument('--neg_sample', default=None, type=int)
     parser.add_argument('--valid_portion', default=None, type=float)
     args = parser.parse_args()
@@ -80,6 +81,7 @@ if __name__ == '__main__':
 
     logs = open('Training_logs.txt', mode='a')
     logs.write('Data set: %s\n' % args.dataset)
+    logs.write('Description: %s\n' % args.desc)
     max_item = 0
     if args.dataset == 'DIGINETICA':
         max_item = 122867
@@ -131,8 +133,8 @@ if __name__ == '__main__':
         item_list = list(item_set)
 
         num_batch = int(len(train_sess) / args.batch_size)
-        saver = tf.train.Saver(max_to_keep=20)
-        t_valid_previous = (0, 0, 0, 0)
+        saver = tf.train.Saver(max_to_keep=40)
+        Recall20 = [0, 0]
         with tf.Session(config=config) as sess:
             writer = tf.summary.FileWriter('logs/period%d' % period, sess.graph)
             if period <= 1:
@@ -154,10 +156,12 @@ if __name__ == '__main__':
                     writer.add_summary(merged, epoch)
 
                 if epoch % args.display_interval == 0:
+
                     if args.mode == 'train' or args.mode == 'early_stop':
                         if not os.path.isdir(os.path.join('model', 'period%d' % period)):
                             os.makedirs(os.path.join('model', 'period%d' % period))
                         saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
+
                     if args.mode == 'test' or args.mode == 'early_stop':
                         t_valid = evaluate(valid_sess, item_list, model, args, sess, 'Validating')
                         t_test = evaluate(test_sess, item_list, model, args, sess, 'Testing')
@@ -168,15 +172,16 @@ if __name__ == '__main__':
                         print(info)
                         logs.write(info + '\n')
                         if not args.is_joint: plot.add(period, epoch, t_test)
+
                     if args.mode == 'early_stop':
-                        if all(j < i for i, j in zip(t_valid_previous, t_valid)):
-                            best_epoch = epoch - args.display_interval
+                        if t_valid[1] <= Recall20[-1] <= Recall20[-2]:
+                            best_epoch = epoch - args.display_interval * 2
                             break
                         else:
-                            t_valid_previous = t_valid
+                            Recall20.append(t_valid[1])
                             best_epoch = epoch
-    logs.write('Done\n')
+    if not args.is_joint: plot.plot(logs)
+    logs.write('Done\n\n')
     logs.close()
-    if not args.is_joint: plot.plot()
     print('Done')
 

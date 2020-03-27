@@ -158,8 +158,8 @@ class ContinueLearningPlot:
         self.MRR10.append(t_test[2])
         self.RECALL10.append(t_test[3])
 
-    def plot(self):
-        x_label = list(map(lambda period, epoch: 'Period%d-epoch%d' % (period, epoch), self.periods, self.epochs))
+    def plot(self, logs):
+        x_label = list(map(lambda period, epoch: 'P%dE%d' % (period, epoch), self.periods, self.epochs))
 
         plt.figure()
         plt.plot(range(len(self.MRR20)), self.MRR20, label='MRR@20')
@@ -176,7 +176,7 @@ class ContinueLearningPlot:
         plt.hlines(NARM_RECALL20, 0, len(self.MRR20)-1, label='NARM_RECALL20')
         plt.hlines(NARM_RECALL10, 0, len(self.MRR20)-1, label='NARM_RECALL10')
 
-        plt.xticks(range(len(self.MRR20)), x_label, rotation=30)
+        plt.xticks(range(len(self.MRR20)), x_label, rotation=90)
         plt.title('Continue learning test results')
         plt.legend()
 
@@ -185,3 +185,5 @@ class ContinueLearningPlot:
             i += 1
         plt.savefig('Coutinue_Learning_result%d.pdf' % i)
         plt.close()
+        logs.write('Coutinue_Learning_result%d.pdf\n' % i)
+
