@@ -162,10 +162,10 @@ class ContinueLearningPlot:
         x_label = list(map(lambda period, epoch: 'P%dE%d' % (period, epoch), self.periods, self.epochs))
 
         plt.figure()
-        plt.plot(range(len(self.MRR20)), self.MRR20, label='MRR@20')
-        plt.plot(range(len(self.MRR20)), self.MRR10, label='MRR@10')
-        plt.plot(range(len(self.MRR20)), self.RECALL20, label='RECALL20')
-        plt.plot(range(len(self.MRR20)), self.RECALL10, label='RECALL10')
+        plt.plot(range(len(self.MRR20)), self.MRR20, label='MRR@20', color='b')
+        plt.plot(range(len(self.MRR20)), self.MRR10, label='MRR@10', color='g')
+        plt.plot(range(len(self.MRR20)), self.RECALL20, label='RECALL20', color='c')
+        plt.plot(range(len(self.MRR20)), self.RECALL10, label='RECALL10', color='y')
 
         if self.args.dataset == 'DIGINETICA':
             NARM_RECALL20 = 0.4970
@@ -173,10 +173,10 @@ class ContinueLearningPlot:
         elif self.args.dataset == 'YOOCHOOSE':
             NARM_RECALL20 = 0.6973
             NARM_RECALL10 = 0.5870
-        plt.hlines(NARM_RECALL20, 0, len(self.MRR20)-1, label='NARM_RECALL20')
-        plt.hlines(NARM_RECALL10, 0, len(self.MRR20)-1, label='NARM_RECALL10')
+        plt.hlines(NARM_RECALL20, 0, len(self.MRR20)-1, label='NARM_RECALL20', color='r')
+        plt.hlines(NARM_RECALL10, 0, len(self.MRR20)-1, label='NARM_RECALL10', color='m')
 
-        plt.xticks(range(len(self.MRR20)), x_label, rotation=90)
+        plt.xticks(range(len(self.MRR20)), x_label, rotation=90, size='small')
         plt.title('Continue learning test results')
         plt.legend()
 

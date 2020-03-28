@@ -82,6 +82,7 @@ if __name__ == '__main__':
     logs = open('Training_logs.txt', mode='a')
     logs.write('Data set: %s\n' % args.dataset)
     logs.write('Description: %s\n' % args.desc)
+
     max_item = 0
     if args.dataset == 'DIGINETICA':
         max_item = 122867
@@ -102,10 +103,11 @@ if __name__ == '__main__':
         logs.write(' '.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
         periods = range(1, periods + 1)
 
+    logs.write('\n')
     item_set = set()
     for period in periods:
         print('Period %d:' % period)
-        logs.write('\nPeriod %d:\n' % period)
+        logs.write('Period %d:\n' % period)
         train_dataset = os.path.join('..', '..', 'data', args.dataset, 'train_%d' % period)
         valid_dataset = os.path.join('..', '..', 'data', args.dataset, 'valid_%d' % period)
         test_dataset = os.path.join('..', '..', 'data', args.dataset, 'test_%d' % period)
