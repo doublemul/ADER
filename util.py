@@ -6,6 +6,7 @@
 # @Description  :
 import random
 import os
+import pickle
 import copy
 import numpy as np
 from tqdm import tqdm
@@ -94,7 +95,7 @@ def sampler(user_train, item_set, batch_size, maxlen):
     return zip(*one_batch)
 
 
-def evaluate(inputs, item_list, model, args, sess, mode):
+def evaluate(inputs, item_list, model, args, sess, mode, max_item=None):
     MRR_20 = 0.0
     RECALL_20 = 0.0
     ranks = []
@@ -119,7 +120,50 @@ def evaluate(inputs, item_list, model, args, sess, mode):
                 seq[-1].insert(0, 0)
 
         predictions = model.predict(sess, seq, test_item)
-        ranks.extend(list(map(lambda label, pred: pred[test_item.index(label)], ground_truth, predictions)))
+        rank = list(map(lambda label, pred: pred[test_item.index(label)], ground_truth, predictions))
+        ranks.extend(rank)
+
+    valid_user = len(ranks)
+    valid_ranks_20 = list(filter(lambda x: x < 20, ranks))
+    valid_ranks_10 = list(filter(lambda x: x < 10, ranks))
+    RECALL_20 = len(valid_ranks_20)
+    MRR_20 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_20))
+    RECALL_10 = len(valid_ranks_10)
+    MRR_10 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_10))
+
+    return MRR_20 / valid_user, RECALL_20 / valid_user, MRR_10 / valid_user, RECALL_10 / valid_user
+
+
+def evaluate_neg(inputs, item_list, model, args, sess, mode):
+    MRR_20 = 0.0
+    RECALL_20 = 0.0
+    ranks = []
+    sess_num = len(inputs)
+    batch_num = int(sess_num / args.test_batch)
+    test_item = item_list
+
+    for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b', desc=mode):
+        ground_truth = []
+        seq = []
+        for i in range(args.test_batch):
+            random_sess = inputs[random.choice(range(sess_num))]
+            if random_sess[-1] in ground_truth:
+                random_sess = inputs[random.choice(range(sess_num))]
+
+            length = len(random_sess)
+            if length <= 2:
+                seq.append([random_sess[0]])
+            elif length > (args.maxlen + 1):
+                seq.append(random_sess[length-args.maxlen-1:-1])
+            else:
+                seq.append(random_sess[:-1])
+            ground_truth.append(copy.deepcopy(random_sess[-1]))
+            while len(seq[-1]) < args.maxlen:
+                seq[-1].insert(0, 0)
+
+        predictions = model.predict(sess, seq, ground_truth)
+        rank = list(map(lambda label, pred: pred[ground_truth.index(label)], ground_truth, predictions))
+        ranks.extend(rank)
 
     valid_user = len(ranks)
     valid_ranks_20 = list(filter(lambda x: x < 20, ranks))
@@ -186,4 +230,60 @@ class ContinueLearningPlot:
         plt.savefig('Coutinue_Learning_result%d.pdf' % i)
         plt.close()
         logs.write('Coutinue_Learning_result%d.pdf\n' % i)
+
+
+class ExemplarSet:
+
+    def __init__(self, item_list, m, args):
+        # self.exemplars = dict.fromkeys(item_list, [None] * m)
+        self.exemplars = {item: [] for item in item_list}
+        self.m = m
+        self.args = args
+
+    def load(self, period):
+        exemplars = []
+        with open('ExemplarSetPeriod=%d.pickle' % (period - 1), mode='rb') as file:
+            exemplars_item = pickle.load(file)
+        for item in exemplars_item.values():
+            if isinstance(item, list):
+                exemplars.extend([i for i in item if i])
+        return exemplars
+
+    def add(self, rep, item, seq):
+        # Initialize mean and selected ids
+        D = rep.T / np.linalg.norm(rep.T, axis=0)
+        seq = np.array(seq)
+        mu = D.mean(axis=1)
+        w_t = mu
+        step_t = 0
+        while not(len(self.exemplars[item]) == self.m) and step_t < 1.1*self.m:
+            tmp_t = np.dot(w_t, D)
+            ind_max = np.argmax(tmp_t)
+            w_t = w_t + mu - D[:, ind_max]
+            tmp_exemplar = np.append(seq[ind_max], item).tolist()
+            step_t += 1
+            if tmp_exemplar not in self.exemplars[item]:
+                self.exemplars[item].append(tmp_exemplar)
+
+        # seq = np.array(seq)
+        # mean = rep.mean(axis=0)
+        # offset = np.zeros_like(mean)
+        # for k in range(1, self.m + 1):
+        #     distance = ((1 / k * (rep + offset) - mean) ** 2).sum(axis=1)
+        #     exemplar_seq = seq[distance.argmin()]
+        #     exemplar_rep = rep[distance.argmin()]
+        #     self.exemplars[item][k - 1] = np.append(exemplar_seq, item).tolist()
+        #     offset += exemplar_rep
+        #     seq = np.delete(seq, distance.argmin(), axis=0)
+        #     rep = np.delete(rep, distance.argmin(), axis=0)
+        #     if rep.size == 0:
+        #         break
+
+    def save(self, period, info):
+        if not os.path.isdir('exemplar'):
+            os.makedirs(os.path.join('exemplar'))
+        with open('exemplar/%sExemplarSetPeriod=%d.pickle' % (info, period), mode='wb') as file:
+            pickle.dump(self.exemplars, file)
+
+
 
