@@ -250,34 +250,23 @@ class ExemplarSet:
         return exemplars
 
     def add(self, rep, item, seq):
-        # Initialize mean and selected ids
-        D = rep.T / np.linalg.norm(rep.T, axis=0)
-        seq = np.array(seq)
-        mu = D.mean(axis=1)
-        w_t = mu
-        step_t = 0
-        while not(len(self.exemplars[item]) == self.m) and step_t < 1.1*self.m:
-            tmp_t = np.dot(w_t, D)
-            ind_max = np.argmax(tmp_t)
-            w_t = w_t + mu - D[:, ind_max]
-            tmp_exemplar = np.append(seq[ind_max], item).tolist()
-            step_t += 1
-            if tmp_exemplar not in self.exemplars[item]:
-                self.exemplars[item].append(tmp_exemplar)
+        if self.args.herding:
+            # Initialize mean and selected ids
+            D = rep.T / np.linalg.norm(rep.T, axis=0)
+            seq = np.array(seq)
+            mu = D.mean(axis=1)
+            w_t = mu
+            step_t = 0
+            while not(len(self.exemplars[item]) == self.m) and step_t < 1.1*self.m:
+                tmp_t = np.dot(w_t, D)
+                ind_max = np.argmax(tmp_t)
+                w_t = w_t + mu - D[:, ind_max]
+                tmp_exemplar = np.append(seq[ind_max], item).tolist()
+                step_t += 1
+                if tmp_exemplar not in self.exemplars[item]:
+                    self.exemplars[item].append(tmp_exemplar)
 
-        # seq = np.array(seq)
-        # mean = rep.mean(axis=0)
-        # offset = np.zeros_like(mean)
-        # for k in range(1, self.m + 1):
-        #     distance = ((1 / k * (rep + offset) - mean) ** 2).sum(axis=1)
-        #     exemplar_seq = seq[distance.argmin()]
-        #     exemplar_rep = rep[distance.argmin()]
-        #     self.exemplars[item][k - 1] = np.append(exemplar_seq, item).tolist()
-        #     offset += exemplar_rep
-        #     seq = np.delete(seq, distance.argmin(), axis=0)
-        #     rep = np.delete(rep, distance.argmin(), axis=0)
-        #     if rep.size == 0:
-        #         break
+
 
     def save(self, period, info):
         if not os.path.isdir('exemplar'):
@@ -286,4 +275,22 @@ class ExemplarSet:
             pickle.dump(self.exemplars, file)
 
 
+def save_load_args(args):
+    if args.mode == 'train':
+        with open('train_args.txt', 'w') as f:
+            f.write('\n'.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
+    if args.mode == 'test':
+        with open('train_args.txt', 'r') as f:
+            for setting in f:
+                setting = setting.replace('\n', '')
+                argument = setting.split(',')[0]
+                value = setting.split(',')[1]
+                if value.isdigit():
+                    exec('args.%s = %d' % (argument, int(value)))
+                elif value.replace('.', '').isdigit():
+                    exec('args.%s = %f' % (argument, float(value)))
+                elif value == 'True':
+                    exec('args.%s = True' % argument)
+                elif value == 'False':
+                    exec('args.%s = False' % argument)
 

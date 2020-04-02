@@ -23,26 +23,23 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-def save_load_args(args):
-    if not os.path.isdir(os.path.join('results', args.dataset + '_' + args.save_dir)):
-        os.makedirs(os.path.join('results', args.dataset + '_' + args.save_dir))
-    os.chdir(os.path.join('results', args.dataset + '_' + args.save_dir))
-    with open('%s_args.txt' % args.mode, 'w') as f:
-        f.write('\n'.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
-    if args.mode == 'test':
-        with open('train_args.txt', 'r') as f:
-            for setting in f:
-                setting = setting.replace('\n', '')
-                argument = setting.split(',')[0]
-                value = setting.split(',')[1]
-                if value.isdigit():
-                    exec('args.%s = %d' % (argument, int(value)))
-                elif value.replace('.', '').isdigit():
-                    exec('args.%s = %f' % (argument, float(value)))
-                elif value == 'True':
-                    exec('args.%s = True' % argument)
-                elif value == 'False':
-                    exec('args.%s = False' % argument)
+def exemplar_generator(args, model, sess, exemplar, period, data_sess, item_list, info):
+    sessions_by_item = defaultdict(list)
+    for _ in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b',
+                  desc='%s exemplar generating 1/2' % info):
+        seq, pos, _ = sampler(data_sess, item_list, batch_size=args.batch_size, maxlen=args.maxlen)
+        pos = np.array(pos)
+        pos = pos[:, -1]
+        for session, item in zip(seq, pos):
+            sessions_by_item[item].append(session)
+
+    for item in tqdm(sessions_by_item.keys(), total=num_batch, ncols=70, leave=False, unit='b',
+                     desc='%s exemplar generating 2/2' % info):
+        seq = sessions_by_item[item]
+        rep = sess.run(model.rep, {model.input_seq: seq, model.is_training: False})
+        exemplar.add(rep=rep, item=item, seq=seq)
+
+    exemplar.save(period, info)
 
 
 if __name__ == '__main__':
@@ -55,135 +52,161 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', required=True)
     parser.add_argument('--save_dir', required=True)
     parser.add_argument('--desc', required=True)
-    parser.add_argument('--is_joint', default=False, type=str2bool)
+    parser.add_argument('--is_joint', default=True, type=str2bool)
     parser.add_argument('--mode', default='early_stop', type=str)
     parser.add_argument('--remove_item', default=True, type=bool)
-    parser.add_argument('--batch_size', default=512, type=int)
+    parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--lr', default=0.0001, type=float)
     parser.add_argument('--maxlen', default=50, type=int)
-    parser.add_argument('--hidden_units', default=150, type=int)
+    parser.add_argument('--hidden_units', default=128, type=int)
     parser.add_argument('--num_blocks', default=1, type=int)
-    parser.add_argument('--num_epochs', default=200, type=int)
-    parser.add_argument('--num_heads', default=1, type=int)
+    parser.add_argument('--num_epochs', default=10, type=int)
+    parser.add_argument('--num_heads', default=2, type=int)
     parser.add_argument('--dropout_rate', default=0.5, type=float)
     parser.add_argument('--l2_emb', default=0.0, type=float)
-    parser.add_argument('--display_interval', default=5, type=int)
+    parser.add_argument('--display_interval', default=1, type=int)
     parser.add_argument('--device_num', default=0, type=int)
-    parser.add_argument('--test_batch', default=64, type=int)
-    parser.add_argument('--neg_sample', default=None, type=int)
-    parser.add_argument('--valid_portion', default=None, type=float)
+    parser.add_argument('--test_batch', default=101, type=int)
     args = parser.parse_args()
+
+    if not os.path.isdir(os.path.join('results', args.dataset + '_' + args.save_dir)):
+        os.makedirs(os.path.join('results', args.dataset + '_' + args.save_dir))
+    os.chdir(os.path.join('results', args.dataset + '_' + args.save_dir))
     save_load_args(args)
 
+    # set configurations
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
 
+    # record logs
     logs = open('Training_logs.txt', mode='a')
-    logs.write('Data set: %s\n' % args.dataset)
-    logs.write('Description: %s\n' % args.desc)
+    logs.write('Data set: %s Description: %s\nargs:' % (args.dataset, args.desc))
+    logs.write(' '.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
 
-    max_item = 0
+    # build model
+    item_num = 0
     if args.dataset == 'DIGINETICA':
-        max_item = 122867
+        item_num = 43023  # 122867
     elif args.dataset == 'YOOCHOOSE':
-        max_item = 52597
+        item_num = 29086  # 52597
     with tf.device('/gpu:%d' % args.device_num):
-        model = SASRec(max_item, args)
+        model = SASRec(item_num, args)
 
+    # periods for joint learning or continue learning situation
     if args.is_joint:
-        logs.write('Joint Learning\nUsing %s mode.\nargs: ' % args.mode)
-        logs.write(' '.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
-        periods = [0]
+        # if joint learning: periods = [0]
+        logs.write('\nJoint Learning\nUsing %s mode.\n' % args.mode)
+        periods = [1]
     else:
-        plot = ContinueLearningPlot(args)
+        # if continue learning: periods = [1, 2, ..., period_nmu]
         datafiles = os.listdir(os.path.join('..', '..', 'data', args.dataset))
-        periods = int(len(list(filter(lambda file: file.endswith(".txt"), datafiles))) / 3 - 1)
-        logs.write('Continue Learning\nNumber of periods is %d.\nUsing %s mode.\nargs: ' % (periods, args.mode))
-        logs.write(' '.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
-        periods = range(1, periods + 1)
+        period_num = int(len(list(filter(lambda file: file.endswith(".txt"), datafiles))) / 3 - 1)
+        logs.write('\nContinue Learning:Number of periods is %d.\nUsing %s mode.\n' % (period_num, args.mode))
+        periods = range(1, period_num + 1)
 
-    logs.write('\n')
     item_set = set()
+    # Loop each period for continue learning #
     for period in periods:
         print('Period %d:' % period)
         logs.write('Period %d:\n' % period)
+
+        # Load data #
         train_dataset = os.path.join('..', '..', 'data', args.dataset, 'train_%d' % period)
         valid_dataset = os.path.join('..', '..', 'data', args.dataset, 'valid_%d' % period)
         test_dataset = os.path.join('..', '..', 'data', args.dataset, 'test_%d' % period)
-
+        # load train data
         train_sess = load_data(train_dataset, item_set, is_train=True, remove_item=False)
         if period > 1:
             previous_valid = os.path.join('..', '..', 'data', args.dataset, 'valid_%d' % (period - 1))
             previous_test = os.path.join('..', '..', 'data', args.dataset, 'test_%d' % (period - 1))
             train_sess.extend(load_data(previous_valid, item_set, is_train=True, remove_item=False))
             train_sess.extend(load_data(previous_test, item_set, is_train=True, remove_item=False))
-
-        if args.valid_portion:
-            full_train_sess = train_sess
-            full_train_sess.extend(load_data(valid_dataset, item_set, is_train=True, remove_item=False))
-            logs.write('Training set information: total number of action: %d.\n'
-                       % sum(list(map(lambda session: len(session), train_sess))))
-        else:
-            logs.write('Training set information: total number of action: %d.\n'
-                       % sum(list(map(lambda session: len(session), train_sess))))
-            logs.write('Validating set information: ')
-            valid_sess = load_data(valid_dataset, item_set, is_train=False, remove_item=args.remove_item, logs=logs)
-
+        logs.write('Training set information: total number of action: %d.\n'
+                   % sum(list(map(lambda session: len(session), train_sess))))
+        # load validation data
+        logs.write('Validating set information: ')
+        valid_sess = load_data(valid_dataset, item_set, is_train=False, remove_item=args.remove_item, logs=logs)
+        # load test data
         logs.write('Testing set information: ')
         test_sess = load_data(test_dataset, item_set, is_train=False, remove_item=args.remove_item, logs=logs)
         item_list = list(item_set)
 
+        # Start of the main algorithm #
+        exemplar = ExemplarSet(item_list, m=5)
         num_batch = int(len(train_sess) / args.batch_size)
-        saver = tf.train.Saver(max_to_keep=40)
-        Recall20 = [0, 0]
+        saver = tf.train.Saver(max_to_keep=None)
+        Recall20 = 0
+        stopcounter = 0
+        best_epoch = 0
         with tf.Session(config=config) as sess:
             writer = tf.summary.FileWriter('logs/period%d' % period, sess.graph)
+            # initialize variables for the first period or restore previous model for later periods
             if period <= 1:
                 sess.run(tf.global_variables_initializer())
             else:
                 saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
-
+            # saver.restore(sess, 'model/period0/epoch=77.ckpt')
+            # train each epoch
             for epoch in range(1, args.num_epochs + 1):
-                if args.valid_portion and epoch % args.display_interval == 1:
-                    train_sess, valid_sess = valid_portion(sessions=full_train_sess, portion=args.valid_portion)
-
+                # train model
                 if args.mode == 'train' or args.mode == 'early_stop':
                     for _ in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b',
                                   desc='Training epoch %d/%d' % (epoch, args.num_epochs)):
                         seq, pos, neg = sampler(train_sess, item_list, batch_size=args.batch_size, maxlen=args.maxlen)
-                        auc, loss, _, merged = sess.run([model.auc, model.loss, model.train_op, model.merged],
-                                                        {model.input_seq: seq, model.pos: pos, model.neg: neg,
-                                                         model.is_training: True})
+                        auc, loss, _, merged, rep = sess.run(
+                            [model.auc, model.loss, model.train_op, model.merged, model.rep],
+                            {model.input_seq: seq, model.pos: pos, model.neg: neg,
+                             model.is_training: True})
                     writer.add_summary(merged, epoch)
-
+                # evaluate performance or save model every display_interval epoch
                 if epoch % args.display_interval == 0:
-
-                    if args.mode == 'train' or args.mode == 'early_stop':
+                    # save model
+                    if args.mode == 'train':
                         if not os.path.isdir(os.path.join('model', 'period%d' % period)):
                             os.makedirs(os.path.join('model', 'period%d' % period))
                         saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
-
+                    # validate performance
                     if args.mode == 'test' or args.mode == 'early_stop':
-                        t_valid = evaluate(valid_sess, item_list, model, args, sess, 'Validating')
-                        t_test = evaluate(test_sess, item_list, model, args, sess, 'Testing')
+                        t_valid = evaluate_neg(valid_sess, item_list, model, args, sess,
+                                               'Validating epoch %d/%d' % (epoch, args.num_epochs))
                         info = 'epoch:%d, valid (MRR@20: %.4f, RECALL@20: %.4f, MRR@10: %.4f, RECALL@10: %.4f)' \
-                               ', test (MRR@20: %.4f, RECALL@20:%.4f, MRR@10: %.4f, RECALL@10: %.4f)' \
-                               % (epoch, t_valid[0], t_valid[1], t_valid[2], t_valid[3],
-                                  t_test[0], t_test[1], t_test[2], t_test[3])
+                               % (epoch, t_valid[0], t_valid[1], t_valid[2], t_valid[3])
                         print(info)
                         logs.write(info + '\n')
-                        if not args.is_joint: plot.add(period, epoch, t_test)
 
+                    # early stop
                     if args.mode == 'early_stop':
-                        if t_valid[1] <= Recall20[-1] <= Recall20[-2]:
-                            best_epoch = epoch - args.display_interval * 2
-                            break
+                        if Recall20 > t_valid[1]:
+                            stopcounter += 1
+                            if stopcounter >= 20:
+                                best_epoch = epoch - 20
+                                break
                         else:
-                            Recall20.append(t_valid[1])
+                            stopcounter = 0
+                            Recall20 = t_valid[1]
                             best_epoch = epoch
-    if not args.is_joint: plot.plot(logs)
+                            if not os.path.isdir(os.path.join('model', 'period%d' % period)):
+                                os.makedirs(os.path.join('model', 'period%d' % period))
+                            saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
+            print('Best valid Recall@20 = %f, at epoch %d' % (Recall20, best_epoch))
+            logs.write('Best valid Recall@20 = %f, at epoch %d\n' % (Recall20, best_epoch))
+
+            # test performance
+            saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
+            t_test = evaluate_neg(test_sess, item_list, model, args, sess, 'Testing epoch%d' % best_epoch)
+            info = 'epoch:%d, test (MRR@20: %.4f, RECALL@20: %.4f, MRR@10: %.4f, RECALL@10: %.4f)' \
+                   % (best_epoch, t_test[0], t_test[1], t_test[2], t_test[3])
+            print(info)
+            logs.write(info + '\n')
+
+            if period > 0:
+                exemplar_generator(args, model, sess, exemplar, period, train_sess, item_list, 'Train')
+                exemplar_generator(args, model, sess, exemplar, period, valid_sess, item_list, 'Valid')
+
     logs.write('Done\n\n')
     logs.close()
     print('Done')
+
+
 
