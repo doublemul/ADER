@@ -14,7 +14,7 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 
 
-def load_data(dataset_name, item_set, is_train=True, remove_item=False, logs=None):
+def load_data(dataset_name, item_set, is_train=True, remove_item=True, logs=None, info=None):
     # Load the dataset
     Sessions = defaultdict(list)
     removed_num = 0
@@ -34,9 +34,22 @@ def load_data(dataset_name, item_set, is_train=True, remove_item=False, logs=Non
                     removed_num += 1
                     continue
             Sessions[sessId].append(itemId)
+
+    if not is_train and remove_item:
+        delete_keys = []
+        for sessId in Sessions:
+            if len(Sessions[sessId]) == 1:
+                removed_num += 1
+                delete_keys.append(sessId)
+        for delete_key in delete_keys:
+            del Sessions[delete_key]
+
     if not is_train:
-        info = 'original total number of action: %d, removed number of action: %d.' % (total_num, removed_num)
+        info = '%s set information: original total number of action: %d, removed number of action: %d.' \
+               % (info, total_num, removed_num)
         logs.write(info + '\n')
+        print(info)
+
     sessions = list(Sessions.values())
     del Sessions
     return sessions
@@ -95,7 +108,7 @@ def sampler(user_train, item_set, batch_size, maxlen):
     return zip(*one_batch)
 
 
-def evaluate(inputs, item_list, model, args, sess, mode, max_item=None):
+def evaluate(inputs, item_list, model, args, sess, mode):
     MRR_20 = 0.0
     RECALL_20 = 0.0
     ranks = []
@@ -176,6 +189,49 @@ def evaluate_neg(inputs, item_list, model, args, sess, mode):
     return MRR_20 / valid_user, RECALL_20 / valid_user, MRR_10 / valid_user, RECALL_10 / valid_user
 
 
+def evaluate_all(inputs, item_list, model, args, sess, mode):
+    ranks = []
+    sess_num = len(inputs)
+    batch_num = int(sess_num / args.test_batch)
+    test_item = item_list
+
+    for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b', desc=mode):
+        sess_indices = random.sample(range(sess_num), args.test_batch)
+        ground_truth = []
+        seq = []
+
+        for sess_index in sess_indices:
+            length = len(inputs[sess_index])
+            if length > (args.maxlen + 1):
+                seq.append(inputs[sess_index][length-args.maxlen-1:-1])
+                ground_truth.append(inputs[sess_index][length-args.maxlen:])
+            else:
+                seq.append(inputs[sess_index][:-1])
+                ground_truth.append(inputs[sess_index][1:])
+            while len(seq[-1]) < args.maxlen:
+                seq[-1].insert(0, 0)
+            while len(ground_truth[-1]) < args.maxlen:
+                ground_truth[-1].insert(0, 0)
+
+        predictions = model.predict_all(sess, seq, test_item)
+        ground_truth = np.array(ground_truth).flatten()
+        predictions = predictions[np.where(ground_truth != 0)]
+        ground_truth = ground_truth[np.where(ground_truth != 0)]
+        # rank = list(map(lambda label, pred: pred[test_item.index(label)], ground_truth, predictions))
+        rank = [pred[test_item.index(label)] for pred, label in zip(predictions, ground_truth)]
+        ranks.extend(rank)
+
+    valid_user = len(ranks)
+    valid_ranks_20 = list(filter(lambda x: x < 20, ranks))
+    valid_ranks_10 = list(filter(lambda x: x < 10, ranks))
+    RECALL_20 = len(valid_ranks_20)
+    MRR_20 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_20))
+    RECALL_10 = len(valid_ranks_10)
+    MRR_10 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_10))
+
+    return MRR_20 / valid_user, RECALL_20 / valid_user, MRR_10 / valid_user, RECALL_10 / valid_user
+
+
 class ContinueLearningPlot:
     def __init__(self, args):
         self.args = args
@@ -234,7 +290,7 @@ class ContinueLearningPlot:
 
 class ExemplarSet:
 
-    def __init__(self, item_list, m, args):
+    def __init__(self, args, item_list, m):
         # self.exemplars = dict.fromkeys(item_list, [None] * m)
         self.exemplars = {item: [] for item in item_list}
         self.m = m
@@ -250,7 +306,7 @@ class ExemplarSet:
         return exemplars
 
     def add(self, rep, item, seq):
-        if self.args.herding:
+        if self.args.is_herding:
             # Initialize mean and selected ids
             D = rep.T / np.linalg.norm(rep.T, axis=0)
             seq = np.array(seq)
@@ -265,7 +321,13 @@ class ExemplarSet:
                 step_t += 1
                 if tmp_exemplar not in self.exemplars[item]:
                     self.exemplars[item].append(tmp_exemplar)
-
+        else:
+            seq_num = len(seq)
+            if seq_num > self.m:
+                selected_ids = np.random.choice(seq_num, self.m, replace=False)
+            else:
+                selected_ids = list(range(seq_num))
+            self.exemplars[item] = list(map(lambda i: np.append(seq[i], item), selected_ids))
 
 
     def save(self, period, info):

@@ -59,6 +59,10 @@ def short_remove(reformed_data, args):
     :return removed_data: result data after removing
     :return sess_end: a map recording session end time, a dictionary sess_end[sessId]=end_time
     """
+    if args.yoochoose_select and os.getcwd().split('/')[-1] == 'YOOCHOOSE':
+        threshold = np.percentile(list(map(lambda x: x[2], reformed_data)), (1 - args.yoochoose_select) * 100)
+        reformed_data = list(filter(lambda x: x[2] > threshold, reformed_data))
+
     # remove session whose length is 1
     sess_counter = defaultdict(lambda: 0)
     for [userId, _, _] in reformed_data:
@@ -130,10 +134,6 @@ def time_partition(removed_data, session_end, args):
             del time_fraction[periods[0]]
 
     else:
-        if args.yoochoose_select and os.getcwd().split('/')[-1] == 'YOOCHOOSE':
-            threshold = np.percentile(list(map(lambda x: x[2], removed_data)), (1-args.yoochoose_select)*100)
-            print(threshold)
-            removed_data = list(filter(lambda x: x[2] > threshold, removed_data))
         # if not partition, put all actions in the last period
         max_time = max(map(lambda x: x[2], removed_data))
         date = datetime.datetime.fromtimestamp(max_time).isoformat().split('T')[0]
@@ -171,12 +171,14 @@ def generating_txt(time_fraction, sess_end, args):
                     open('test_' + str(i) + '.txt', 'w') as file_test, \
                     open('valid_' + str(i) + '.txt', 'w') as file_valid:
                 for [userId, itemId, time] in time_fraction[period]:
-                    if sess_end[userId] <= last_time[i - 1] - test_threshold * 2:
+                    if sess_end[userId] <= (last_time[i - 1] - test_threshold * 2):
                         file_train.write('%d %d\n' % (userId, itemId))
-                    elif sess_end[userId] <= last_time[i - 1] - test_threshold * 1:
+                    elif sess_end[userId] <= (last_time[i - 1] - test_threshold * 1):
                         file_valid.write('%d %d\n' % (userId, itemId))
-                    elif sess_end[userId] > last_time[i - 1] - test_threshold:
+                    elif sess_end[userId] > (last_time[i - 1] - test_threshold):
                         file_test.write('%d %d\n' % (userId, itemId))
+                    else:
+                        print('Missing data!')
     else:
         with open('train_0.txt', 'w') as file_train, \
                 open('test_0.txt', 'w') as file_test, \
@@ -189,19 +191,18 @@ def generating_txt(time_fraction, sess_end, args):
                 elif sess_end[userId] > last_time[0] - test_threshold:
                     file_test.write('%d %d\n' % (userId, itemId))
 
-
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='train-item-views.csv', type=str)  # 'yoochoose-clicks.dat'
     parser.add_argument('--time_fraction', default='month', type=str)
-    parser.add_argument('--test_fraction', default='day', type=str)
+    parser.add_argument('--test_fraction', default='week', type=str)
     parser.add_argument('--threshold_sess', default=1, type=int)
     parser.add_argument('--threshold_item', default=4, type=int)
     parser.add_argument('--is_time_fraction', default=False, type=str2bool)
     parser.add_argument('--yoochoose_select', default=0.25, type=float)
     args = parser.parse_args()
-
+    # args.dataset = 'yoochoose-clicks.dat'
     print('Start preprocess ' + args.dataset + ':')
 
     # load data and get the session and item lookup table
@@ -222,6 +223,7 @@ if __name__ == '__main__':
 
     # partition data according to time periods
     time_fraction = time_partition(removed_data, sess_end, args)
+
     # generate final txt file
     generating_txt(time_fraction, sess_end, args)
 
