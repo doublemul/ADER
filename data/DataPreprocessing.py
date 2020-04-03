@@ -151,6 +151,15 @@ def generating_txt(time_fraction, sess_end, args):
     :param sess_end: session end time map, sess_map[sessId]=end_time
     :param args.test_fraction: time interval for test and valid sets
     """
+    # item map second time
+    for period in sorted(time_fraction.keys()):
+        time_fraction[period].sort(key=lambda x: sess_end[x[0]])
+    item_map = {}
+    for period in sorted(time_fraction.keys()):
+        for i, [userId, itemId, time] in enumerate(time_fraction[period]):
+            itemId = generate_name_Id_map(itemId, item_map)
+            time_fraction[period][i] = [userId, itemId, time]
+
     # sort action according to time sequence and session
     for period in sorted(time_fraction.keys()):
         time_fraction[period].sort(key=lambda x: x[2])

@@ -162,7 +162,7 @@ if __name__ == '__main__':
         test_sess = load_data(test_dataset, item_set,
                               is_train=False, remove_item=args.remove_item, logs=logs, info='Test')
         # generate item list
-        item_list = list(item_set)
+        item_list = sorted(list(item_set))
 
         # Start of the main algorithm #
         exemplar = ExemplarSet(args, item_list, m=5)
