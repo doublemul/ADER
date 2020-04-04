@@ -41,7 +41,7 @@ def exemplar_generator(args, model, sess, exemplar, period, data_sess, item_list
     exemplar.save(period, info)
 
 
-def full_exemplar_generator(args, model, sess, exemplar, period, data_sess, item_list, info):
+def exemplar_generator_full(args, model, sess, exemplar, period, data_sess, item_list, info):
     sessions_by_item = defaultdict(list)
     for _ in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b',
                   desc='%s exemplar generating 1/2' % info):
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', default=0.0001, type=float)
     parser.add_argument('--num_blocks', default=1, type=int)
     parser.add_argument('--num_epochs', default=200, type=int)
-    parser.add_argument('--num_heads', default=2, type=int)
+    parser.add_argument('--num_heads', default=1, type=int)
     # hyper-parameter fixed
     parser.add_argument('--hidden_units', default=120, type=int)
     parser.add_argument('--maxlen', default=50, type=int)
@@ -163,6 +163,10 @@ if __name__ == '__main__':
                               is_train=False, remove_item=args.remove_item, logs=logs, info='Test')
         # generate item list
         item_list = sorted(list(item_set))
+        if len(item_list) != max(item_list):
+            print('Item index error!')
+            logs.write('Item index error!')
+            break
 
         # Start of the main algorithm #
         exemplar = ExemplarSet(args, item_list, m=5)
@@ -225,7 +229,7 @@ if __name__ == '__main__':
 
             # test performance
             saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
-            t_test = evaluate_all(test_sess, item_list, model, args, sess, 'Testing epoch%d' % best_epoch)
+            t_test = evaluate_all(test_sess, item_list, model, args, sess, 'Testing epoch %d' % best_epoch)
             info = 'epoch:%d, test (MRR@20: %.4f, RECALL@20: %.4f, MRR@10: %.4f, RECALL@10: %.4f)' \
                    % (best_epoch, t_test[0], t_test[1], t_test[2], t_test[3])
             print(info)
