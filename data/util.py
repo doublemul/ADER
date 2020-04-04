@@ -13,6 +13,7 @@ import datetime
 import numpy as np
 import copy
 
+
 def parse(path):
     g = gzip.open(path, 'r')
     for l in g:

@@ -18,159 +18,147 @@ import math
 import time
 
 
-def load_data(dataset_name, item_set, is_train=True, remove_item=True, logs=None, info=None):
-    # Load the dataset
-    Sessions = defaultdict(list)
-    removed_num = 0
-    total_num = 0
-    with open('%s.txt' % dataset_name, 'r') as f:
-        for line in f:
-            total_num += 1
-            sessId, itemId = line.rstrip().split(' ')
-            sessId = int(sessId)
-            itemId = int(itemId)
+class DataLoader:
+    def __init__(self, args, logs):
+        self.item_set = set()
+        self.path = os.path.join('..', '..', 'data', args.dataset)
+        self.is_remove_item = args.remove_item
+        self.logs = logs
 
-            # remove new items in test that not appear in train
-            if is_train or (not remove_item):
-                item_set.add(itemId)
-            else:
-                if itemId not in item_set:
+    def train_loader(self, period):
+        Sessions = defaultdict(list)
+        with open(self.path + '/train_%d.txt' % period, 'r') as f:
+            for line in f:
+                sessId, itemId = line.rstrip().split(' ')
+                sessId = int(sessId)
+                itemId = int(itemId)
+                self.item_set.add(itemId)
+                Sessions[sessId].append(itemId)
+        sessions = list(Sessions.values())
+        if period > 1:
+            sessions.extend(self.load_previous_evaluate_data(period))
+        info = 'Train set information: total number of action: %d.' \
+               % sum(list(map(lambda session: len(session), sessions)))
+        self.logs.write(info + '\n')
+        print(info)
+        return sessions
+
+    def load_previous_evaluate_data(self, period):
+        period = period - 1
+        Sessions = defaultdict(list)
+        for name in ['valid', 'test']:
+            with open(self.path + '/%s_%d.txt' % (name, period), 'r') as f:
+                for line in f:
+                    sessId, itemId = line.rstrip().split(' ')
+                    sessId = int(sessId)
+                    itemId = int(itemId)
+                    self.item_set.add(itemId)
+                    Sessions[sessId].append(itemId)
+        sessions = list(Sessions.values())
+        return sessions
+
+    def evaluate_loader(self, period, mode):
+        Sessions = defaultdict(list)
+        removed_num = 0
+        total_num = 0
+        with open(self.path + '/%s_%d.txt' % (mode, period), 'r') as f:
+            for line in f:
+                total_num += 1
+                sessId, itemId = line.rstrip().split(' ')
+                sessId = int(sessId)
+                itemId = int(itemId)
+                # remove new items in test or validation set that not appear in train set
+                if self.is_remove_item and (itemId not in self.item_set):
                     removed_num += 1
                     continue
-            Sessions[sessId].append(itemId)
-
-    if not is_train and remove_item:
-        delete_keys = []
-        for sessId in Sessions:
-            if len(Sessions[sessId]) == 1:
-                removed_num += 1
-                delete_keys.append(sessId)
-        for delete_key in delete_keys:
-            del Sessions[delete_key]
-
-    if not is_train:
+                else:
+                    self.item_set.add(itemId)
+                Sessions[sessId].append(itemId)
+        if self.is_remove_item:
+            delete_keys = []
+            for sessId in Sessions:
+                if len(Sessions[sessId]) == 1:
+                    removed_num += 1
+                    delete_keys.append(sessId)
+            for delete_key in delete_keys:
+                del Sessions[delete_key]
+        if mode == 'test':
+            info = 'Test'
+        else:
+            info = 'Validation'
         info = '%s set information: original total number of action: %d, removed number of action: %d.' \
                % (info, total_num, removed_num)
-        logs.write(info + '\n')
+        self.logs.write(info + '\n')
         print(info)
+        sessions = list(Sessions.values())
+        return sessions
 
-    sessions = list(Sessions.values())
-    del Sessions
-    return sessions
-
-
-def random_neg(item_list, ts):
-    neg = random.choice(item_list)
-    while neg in ts:
-        neg = random.choice(item_list)
-    return neg
+    def max_item(self, period):
+        if (period <= 1) and (len(self.item_set) != max(self.item_set)):
+            print('Item index error!')
+            self.logs.write('Item index error!')
+        return max(self.item_set)
 
 
-def sample(user_train, item_list, maxlen):
-    session = random.choice(user_train)
-    while len(session) <= 1:
-        session = random.choice(user_train)
-
-    seq = np.zeros([maxlen], dtype=np.int32)
-    pos = np.zeros([maxlen], dtype=np.int32)
-    neg = np.zeros([maxlen], dtype=np.int32)
-    nxt = session[-1]
-    idx = maxlen - 1
-
-    ts = set(session)
-    for itemId in reversed(session[:-1]):
-        seq[idx] = itemId
-        pos[idx] = nxt
-        if nxt != 0:
-            neg[idx] = random_neg(item_list, ts)
-        nxt = itemId
-        idx -= 1
-        if idx == -1:
-            break
-
-    return seq, pos, neg
-
-
-def sampler(user_train, item_set, batch_size, maxlen):
-    SEED = random.randint(0, 2e9)
-    random.seed(SEED)
-
-    one_batch = []
-    for i in range(batch_size):
-        one_batch.append(sample(user_train, item_set, maxlen))
-
-    return zip(*one_batch)
-
-
-def evaluate(n_workers, inputs, item_list, model, args, sess, info):
-    processors = []
-    q = multiprocessing.Queue()
-    data_num_per_worker = math.ceil(len(inputs)/n_workers)
-    for i in range(n_workers):
-        if i < (n_workers-1):
-            data = inputs[i * data_num_per_worker:(i + 1) * data_num_per_worker]
+class Sampler:
+    def __init__(self, args, item_num, is_train):
+        self.item_num = item_num
+        self.maxlen = args.maxlen
+        self.is_train = is_train
+        if is_train:
+            self.batch_size = args.batch_size
         else:
-            data = inputs[i * data_num_per_worker:]
-        processors.append(
-            multiprocessing.Process(target=evaluate_all_multiprocess,
-                                    args=(data,
-                                          item_list,
-                                          model,
-                                          args,
-                                          sess,
-                                          info,
-                                          q,
-                                          )))
-        processors[-1].daemon = True
-        processors[-1].start()
-    ranks = []
-    for i in range(n_workers):
-        processors[i].join()
-        ranks.extend(q.get())
+            self.batch_size = args.test_batch
 
-    valid_user = len(ranks)
-    valid_ranks_20 = list(filter(lambda x: x < 20, ranks))
-    valid_ranks_10 = list(filter(lambda x: x < 10, ranks))
-    RECALL_20 = len(valid_ranks_20)
-    MRR_20 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_20))
-    RECALL_10 = len(valid_ranks_10)
-    MRR_10 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_10))
+    def label_generator(self, session):
+        seq = np.zeros([self.maxlen], dtype=np.int32)
+        pos = np.zeros([self.maxlen], dtype=np.int32)
+        nxt = session[-1]
+        idx = self.maxlen - 1
+        if self.is_train:
+            neg = np.zeros([self.maxlen], dtype=np.int32)
+            ts = set(session)
 
-    return MRR_20 / valid_user, RECALL_20 / valid_user, MRR_10 / valid_user, RECALL_10 / valid_user
+        for itemId in reversed(session[:-1]):
+            seq[idx] = itemId
+            pos[idx] = nxt
+            if nxt != 0 and self.is_train:
+                neg[idx] = self.negative_generator(ts)
+            nxt = itemId
+            idx -= 1
+            if idx == -1:
+                break
+
+        if self.is_train:
+            return seq, pos, neg
+        else:
+            return seq, pos
+
+    def negative_generator(self, ts):
+        neg = random.randint(1, self.item_num)
+        while neg in ts:
+            neg = random.randint(1, self.item_num)
+        return neg
+
+    def sampler(self, data):
+        SEED = random.randint(0, 2e9)
+        random.seed(SEED)
+
+        one_batch = []
+        for i in range(self.batch_size):
+            session = random.choice(data)
+            while len(session) <= 1:
+                session = random.choice(data)
+            one_batch.append(self.label_generator(session))
+
+        return zip(*one_batch)
 
 
-def evaluate_all_multiprocess(inputs, item_list, model, args, sess, info, q):
-    ranks = []
-    sess_num = len(inputs)
-    batch_num = int(sess_num / args.test_batch)
-    test_item = item_list
+class Evaluator:
+    def __init__(self):
 
-    for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b', desc=info):
-        sess_indices = random.sample(range(sess_num), args.test_batch)
-        ground_truth = []
-        seq = []
 
-        for sess_index in sess_indices:
-            length = len(inputs[sess_index])
-            if length > (args.maxlen + 1):
-                seq.append(inputs[sess_index][length - args.maxlen - 1:-1])
-                ground_truth.append(inputs[sess_index][length - args.maxlen:])
-            else:
-                seq.append(inputs[sess_index][:-1])
-                ground_truth.append(inputs[sess_index][1:])
-            while len(seq[-1]) < args.maxlen:
-                seq[-1].insert(0, 0)
-            while len(ground_truth[-1]) < args.maxlen:
-                ground_truth[-1].insert(0, 0)
 
-        predictions = model.predict_all(sess, seq, test_item)
-        ground_truth = np.array(ground_truth).flatten()
-        predictions = predictions[np.where(ground_truth != 0)]
-        ground_truth = ground_truth[np.where(ground_truth != 0)]
-        rank = [pred[test_item.index(label)] for pred, label in zip(predictions, ground_truth)]
-        ranks.extend(rank)
-
-    q.put(ranks)
 
 
 
@@ -274,27 +262,13 @@ def evaluate_all(inputs, item_list, model, args, sess, info):
                 seq[-1].insert(0, 0)
             while len(ground_truth[-1]) < args.maxlen:
                 ground_truth[-1].insert(0, 0)
-        t0 = float(time.perf_counter())
         predictions = model.predict_all(sess, seq, test_item)
-        t1 = float(time.perf_counter())
         ground_truth = np.array(ground_truth).flatten()
-        t2 = float(time.perf_counter())
         predictions = predictions[np.where(ground_truth != 0)]
         ground_truth = ground_truth[np.where(ground_truth != 0)]
-        t3 = float(time.perf_counter())
-
-        # with Pool() as pool:
-        #     rank = pool.map(lambda pred, label: pred[test_item.index(label)], predictions, ground_truth)
-
-        # item_indices = [test_item.index(label) for label in ground_truth]
-        # rank = [pred[index] for pred, index in zip(predictions, item_indices)]
-
-        # rank = [pred[test_item.index(label)] for pred, label in zip(predictions, ground_truth)]
         rank = [pred[index-1] for pred, index in zip(predictions, ground_truth)]
-
-        t4 = float(time.perf_counter())
-        # print((t4-t3)/(t1-t0))
         ranks.extend(rank)
+
     valid_user = len(ranks)
     valid_ranks_20 = list(filter(lambda x: x < 20, ranks))
     valid_ranks_10 = list(filter(lambda x: x < 10, ranks))
@@ -306,7 +280,7 @@ def evaluate_all(inputs, item_list, model, args, sess, info):
     return MRR_20 / valid_user, RECALL_20 / valid_user, MRR_10 / valid_user, RECALL_10 / valid_user
 
 
-class ExemplarSet:
+class ExemplarGenerator:
 
     def __init__(self, args, item_list, m):
         # self.exemplars = dict.fromkeys(item_list, [None] * m)
