@@ -80,6 +80,26 @@ def get_periods(args, logs):
     return periods
 
 
+def save_load_args(args):
+    if args.mode == 'train':
+        with open('train_args.txt', 'w') as f:
+            f.write('\n'.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
+    if args.mode == 'test':
+        with open('train_args.txt', 'r') as f:
+            for setting in f:
+                setting = setting.replace('\n', '')
+                argument = setting.split(',')[0]
+                value = setting.split(',')[1]
+                if value.isdigit():
+                    exec('args.%s = %d' % (argument, int(value)))
+                elif value.replace('.', '').isdigit():
+                    exec('args.%s = %f' % (argument, float(value)))
+                elif value == 'True':
+                    exec('args.%s = True' % argument)
+                elif value == 'False':
+                    exec('args.%s = False' % argument)
+
+
 if __name__ == '__main__':
 
     tf.disable_v2_behavior()
@@ -128,7 +148,7 @@ if __name__ == '__main__':
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
-    item_num = 43023 if args.dataset == 'DIGINETICA' else item_num = 29086
+    item_num = 43023 if args.dataset == 'DIGINETICA' else 29086
 
     # periods for joint learning or continue learning situation
     periods = get_periods(args, logs)
@@ -152,11 +172,15 @@ if __name__ == '__main__':
         num_batch = int(len(train_sess) / args.batch_size)
         Recall20, stopcounter, best_epoch = 0, 0, 0
         saver = tf.train.Saver(max_to_keep=20)
-        train_sampler = Sampler(args=args, item_num=max_item, is_train=True)
+        train_sampler = Sampler(args=args, max_item=max_item, is_train=True)
+
         with tf.Session(config=config) as sess:
+
+            valid_evaluator = Evaluator(args, valid_sess, max_item, model, 'valid', sess, logs)
             writer = tf.summary.FileWriter('logs/period%d' % period, sess.graph)
             sess.run(tf.global_variables_initializer()) if period <= 1 \
                 else saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
+
             for epoch in range(1, args.num_epochs + 1):
                 # train each epoch
                 if args.mode == 'train' or args.mode == 'early_stop':
@@ -174,34 +198,30 @@ if __name__ == '__main__':
                         saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
                     # validate performance
                     if args.mode == 'test' or args.mode == 'early_stop':
-                        t_valid = evaluate_all(valid_sess, item_list, model, args, sess,
-                                               'Validating epoch %d/%d' % (epoch, args.num_epochs))
-                        info = 'epoch:%d, valid (MRR@20: %.4f, RECALL@20: %.4f, MRR@10: %.4f, RECALL@10: %.4f)' \
-                               % (epoch, t_valid[0], t_valid[1], t_valid[2], t_valid[3])
-                        print(info)
-                        logs.write(info + '\n')
+                        valid_evaluator.full_item(epoch)
+                        recall_20 = valid_evaluator.recall_20
                     # early stop
                     if args.mode == 'early_stop':
-                        if Recall20 > t_valid[1]:
+                        if Recall20 > recall_20:
                             stopcounter += 1
                             if stopcounter >= args.stop_iter:
                                 best_epoch = epoch - args.stop_iter * args.display_interval
                                 break
                         else:
                             stopcounter = 0
-                            Recall20 = t_valid[1]
+                            Recall20 = recall_20
                             best_epoch = epoch
                             saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
-            print('Best valid Recall@20 = %f, at epoch %d' % (Recall20, best_epoch))
-            logs.write('Best valid Recall@20 = %f, at epoch %d\n' % (Recall20, best_epoch))
-
-            # test performance
-            saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
-            t_test = evaluate_all(test_sess, item_list, model, args, sess, 'Testing epoch %d' % best_epoch)
-            info = 'epoch:%d, test (MRR@20: %.4f, RECALL@20: %.4f, MRR@10: %.4f, RECALL@10: %.4f)' \
-                   % (best_epoch, t_test[0], t_test[1], t_test[2], t_test[3])
-            print(info)
-            logs.write(info + '\n')
+            # print('Best valid Recall@20 = %f, at epoch %d' % (Recall20, best_epoch))
+            # logs.write('Best valid Recall@20 = %f, at epoch %d\n' % (Recall20, best_epoch))
+            #
+            # # test performance
+            # saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
+            # t_test = evaluate_all(test_sess, item_list, model, args, sess, 'Testing epoch %d' % best_epoch)
+            # info = 'epoch:%d, test (MRR@20: %.4f, RECALL@20: %.4f, MRR@10: %.4f, RECALL@10: %.4f)' \
+            #        % (best_epoch, t_test[0], t_test[1], t_test[2], t_test[3])
+            # print(info)
+            # logs.write(info + '\n')
 
             # if period > 0:
             #     exemplar_generator(args, model, sess, exemplar, period, train_sess, item_list, 'Train')

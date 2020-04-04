@@ -7,15 +7,9 @@
 import random
 import os
 import pickle
-import copy
 import numpy as np
-from pathos.multiprocessing import ProcessingPool as Pool
-import multiprocessing
 from tqdm import tqdm
 from collections import defaultdict
-import matplotlib.pyplot as plt
-import math
-import time
 
 
 class DataLoader:
@@ -101,14 +95,16 @@ class DataLoader:
 
 
 class Sampler:
-    def __init__(self, args, item_num, is_train):
-        self.item_num = item_num
+    def __init__(self, args, max_item, is_train):
+        self.max_item = max_item
         self.maxlen = args.maxlen
         self.is_train = is_train
         if is_train:
             self.batch_size = args.batch_size
         else:
             self.batch_size = args.test_batch
+        SEED = random.randint(0, 2e9)
+        random.seed(SEED)
 
     def label_generator(self, session):
         seq = np.zeros([self.maxlen], dtype=np.int32)
@@ -117,13 +113,12 @@ class Sampler:
         idx = self.maxlen - 1
         if self.is_train:
             neg = np.zeros([self.maxlen], dtype=np.int32)
-            ts = set(session)
 
         for itemId in reversed(session[:-1]):
             seq[idx] = itemId
             pos[idx] = nxt
             if nxt != 0 and self.is_train:
-                neg[idx] = self.negative_generator(ts)
+                neg[idx] = self.negative_generator(session)
             nxt = itemId
             idx -= 1
             if idx == -1:
@@ -134,161 +129,123 @@ class Sampler:
         else:
             return seq, pos
 
-    def negative_generator(self, ts):
-        neg = random.randint(1, self.item_num)
-        while neg in ts:
-            neg = random.randint(1, self.item_num)
+    def negative_generator(self, session):
+        neg = random.randint(1, self.max_item)
+        while neg in session:
+            neg = random.randint(1, self.max_item)
         return neg
 
     def sampler(self, data):
-        SEED = random.randint(0, 2e9)
-        random.seed(SEED)
-
         one_batch = []
         for i in range(self.batch_size):
             session = random.choice(data)
             while len(session) <= 1:
                 session = random.choice(data)
             one_batch.append(self.label_generator(session))
+        return zip(*one_batch)
 
+    def evaluate_negative_sampler(self, data):
+        one_batch = []
+        ground_truth = []
+        for i in range(self.batch_size):
+            session = random.choice(data)
+            while (len(session) <= 1) or session[-1] in ground_truth:
+                session = random.choice(data)
+            ground_truth.append(session[-1])
+            one_batch.append(self.label_generator(session))
         return zip(*one_batch)
 
 
 class Evaluator:
-    def __init__(self):
+    def __init__(self, args, data, max_item, model, mode, sess, logs):
 
+        self.data = data
+        self.max_item = max_item
+        self.mode = mode
+        self.sess = sess
+        self.model = model
+        self.logs = logs
 
+        self.ranks = []
+        self.recall_20 = 0
+        self.batch_num = int(len(data) / args.test_batch)
+        self.evaluate_sampler = Sampler(args=args, max_item=max_item, is_train=False)
+        self.desc = 'Validating epoch ' if mode == 'valid' else 'Testing epoch '
 
+    def last_item(self, epoch):
+        self.ranks = []
+        for _ in tqdm(range(self.batch_num), total=self.batch_num, ncols=70, leave=False, unit='b',
+                      desc=self.desc+str(epoch)):
+            seq, pos = self.evaluate_sampler.sampler(self.data)
 
+            predictions = self.model.predict(self.sess, seq, list(range(1, self.max_item)))
+            ground_truth = [sess[-1] for sess in pos]
+            rank = [pred[index - 1] for pred, index in zip(predictions, ground_truth)]
+            self.ranks.extend(rank)
+        self.display(epoch)
 
+    def full_item(self, epoch):
+        self.ranks = []
+        for _ in tqdm(range(self.batch_num), total=self.batch_num, ncols=70, leave=False, unit='b',
+                      desc=self.desc + str(epoch)):
+            seq, pos = self.evaluate_sampler.sampler(self.data)
 
-def evaluate_last(inputs, item_list, model, args, sess, mode):
-    MRR_20 = 0.0
-    RECALL_20 = 0.0
-    ranks = []
-    sess_num = len(inputs)
-    batch_num = int(sess_num / args.test_batch)
-    test_item = item_list
+            predictions = self.model.predict_all(self.sess, seq, list(range(1, self.max_item)))
+            ground_truth = np.array(pos).flatten()
 
-    for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b', desc=mode):
-        sess_indices = random.sample(range(sess_num), args.test_batch)
-        ground_truth = []
-        seq = []
-        for sess_index in sess_indices:
-            length = len(inputs[sess_index])
-            if length <= 2:
-                seq.append([inputs[sess_index][0]])
-            elif length > (args.maxlen + 1):
-                seq.append(inputs[sess_index][length - args.maxlen - 1:-1])
-            else:
-                seq.append(inputs[sess_index][:-1])
-            ground_truth.append(copy.deepcopy(inputs[sess_index][-1]))
-            while len(seq[-1]) < args.maxlen:
-                seq[-1].insert(0, 0)
+            predictions = predictions[np.where(ground_truth != 0)]
+            ground_truth = ground_truth[np.where(ground_truth != 0)]
 
-        predictions = model.predict(sess, seq, test_item)
-        rank = list(map(lambda label, pred: pred[test_item.index(label)], ground_truth, predictions))
-        ranks.extend(rank)
+            rank = [pred[index - 1] for pred, index in zip(predictions, ground_truth)]
+            self.ranks.extend(rank)
+        self.display(epoch)
 
-    valid_user = len(ranks)
-    valid_ranks_20 = list(filter(lambda x: x < 20, ranks))
-    valid_ranks_10 = list(filter(lambda x: x < 10, ranks))
-    RECALL_20 = len(valid_ranks_20)
-    MRR_20 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_20))
-    RECALL_10 = len(valid_ranks_10)
-    MRR_10 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_10))
+    def neg_sample(self, epoch):
+        self.ranks = []
+        for _ in tqdm(range(self.batch_num), total=self.batch_num, ncols=70, leave=False, unit='b',
+                      desc=self.desc + str(epoch)):
+            seq, pos = self.evaluate_sampler.evaluate_negative_sampler(self.data)
 
-    return MRR_20 / valid_user, RECALL_20 / valid_user, MRR_10 / valid_user, RECALL_10 / valid_user
+            ground_truth = [item[-1] for item in pos]
+            predictions = self.model.predict_all(self.sess, seq, ground_truth)
 
+            rank = [pred[ground_truth.index(label)] for pred, label in zip(ground_truth, predictions)]
+            self.ranks.extend(rank)
+        self.display(epoch)
 
-def evaluate_neg(inputs, item_list, model, args, sess, mode):
-    ranks = []
-    sess_num = len(inputs)
-    batch_num = int(sess_num / args.test_batch)
+    def results(self):
+        valid_user = len(self.ranks)
+        valid_ranks_20 = list(filter(lambda x: x < 20, self.ranks))
+        valid_ranks_10 = list(filter(lambda x: x < 10, self.ranks))
+        RECALL_20 = len(valid_ranks_20)
+        MRR_20 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_20))
+        RECALL_10 = len(valid_ranks_10)
+        MRR_10 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_10))
+        self.recall_20 = RECALL_20 / valid_user
+        return MRR_20 / valid_user, RECALL_20 / valid_user, MRR_10 / valid_user, RECALL_10 / valid_user
 
-    for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b', desc=mode):
-        ground_truth = []
-        seq = []
-        for i in range(args.test_batch):
-            random_sess = inputs[random.choice(range(sess_num))]
-            if random_sess[-1] in ground_truth:
-                random_sess = inputs[random.choice(range(sess_num))]
-
-            length = len(random_sess)
-            if length <= 2:
-                seq.append([random_sess[0]])
-            elif length > (args.maxlen + 1):
-                seq.append(random_sess[length - args.maxlen - 1:-1])
-            else:
-                seq.append(random_sess[:-1])
-            ground_truth.append(copy.deepcopy(random_sess[-1]))
-            while len(seq[-1]) < args.maxlen:
-                seq[-1].insert(0, 0)
-
-        predictions = model.predict(sess, seq, ground_truth)
-        rank = list(map(lambda label, pred: pred[ground_truth.index(label)], ground_truth, predictions))
-        ranks.extend(rank)
-
-    valid_user = len(ranks)
-    valid_ranks_20 = list(filter(lambda x: x < 20, ranks))
-    valid_ranks_10 = list(filter(lambda x: x < 10, ranks))
-    RECALL_20 = len(valid_ranks_20)
-    MRR_20 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_20))
-    RECALL_10 = len(valid_ranks_10)
-    MRR_10 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_10))
-
-    return MRR_20 / valid_user, RECALL_20 / valid_user, MRR_10 / valid_user, RECALL_10 / valid_user
-
-
-def evaluate_all(inputs, item_list, model, args, sess, info):
-    ranks = []
-    sess_num = len(inputs)
-    batch_num = int(sess_num / args.test_batch)
-    test_item = item_list
-
-    for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b', desc=info):
-        sess_indices = random.sample(range(sess_num), args.test_batch)
-        ground_truth = []
-        seq = []
-        for sess_index in sess_indices:
-            length = len(inputs[sess_index])
-            if length > (args.maxlen + 1):
-                seq.append(inputs[sess_index][length - args.maxlen - 1:-1])
-                ground_truth.append(inputs[sess_index][length - args.maxlen:])
-            else:
-                seq.append(inputs[sess_index][:-1])
-                ground_truth.append(inputs[sess_index][1:])
-            while len(seq[-1]) < args.maxlen:
-                seq[-1].insert(0, 0)
-            while len(ground_truth[-1]) < args.maxlen:
-                ground_truth[-1].insert(0, 0)
-        predictions = model.predict_all(sess, seq, test_item)
-        ground_truth = np.array(ground_truth).flatten()
-        predictions = predictions[np.where(ground_truth != 0)]
-        ground_truth = ground_truth[np.where(ground_truth != 0)]
-        rank = [pred[index-1] for pred, index in zip(predictions, ground_truth)]
-        ranks.extend(rank)
-
-    valid_user = len(ranks)
-    valid_ranks_20 = list(filter(lambda x: x < 20, ranks))
-    valid_ranks_10 = list(filter(lambda x: x < 10, ranks))
-    RECALL_20 = len(valid_ranks_20)
-    MRR_20 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_20))
-    RECALL_10 = len(valid_ranks_10)
-    MRR_10 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_10))
-
-    return MRR_20 / valid_user, RECALL_20 / valid_user, MRR_10 / valid_user, RECALL_10 / valid_user
+    def display(self, epoch):
+        results = self.results()
+        info = 'epoch:%d, %s (MRR@20: %.4f, RECALL@20: %.4f, MRR@10: %.4f, RECALL@10: %.4f)' \
+               % (epoch, self.mode, results[0], results[1], results[2], results[3])
+        print(info)
+        self.logs.write(info + '\n')
 
 
 class ExemplarGenerator:
 
-    def __init__(self, args, item_list, m):
+    def __init__(self, args, max_item, m):
         # self.exemplars = dict.fromkeys(item_list, [None] * m)
-        self.exemplars = {item: [] for item in item_list}
+        self.exemplars = {item: [] for item in list(range(1, max_item + 1))}
         self.m = m
         self.args = args
 
     def load(self, period):
+        """
+        This function load exemplar in previous period
+        :param period: this period
+        :return:
+        """
         exemplars = []
         with open('ExemplarSetPeriod=%d.pickle' % (period - 1), mode='rb') as file:
             exemplars_item = pickle.load(file)
@@ -328,21 +285,9 @@ class ExemplarGenerator:
             pickle.dump(self.exemplars, file)
 
 
-def save_load_args(args):
-    if args.mode == 'train':
-        with open('train_args.txt', 'w') as f:
-            f.write('\n'.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
-    if args.mode == 'test':
-        with open('train_args.txt', 'r') as f:
-            for setting in f:
-                setting = setting.replace('\n', '')
-                argument = setting.split(',')[0]
-                value = setting.split(',')[1]
-                if value.isdigit():
-                    exec('args.%s = %d' % (argument, int(value)))
-                elif value.replace('.', '').isdigit():
-                    exec('args.%s = %f' % (argument, float(value)))
-                elif value == 'True':
-                    exec('args.%s = True' % argument)
-                elif value == 'False':
-                    exec('args.%s = False' % argument)
+    def sorted_by_last_item:
+
+
+
+
+
