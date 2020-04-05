@@ -66,10 +66,8 @@ class SASRec():
 
             self.seq = normalize(self.seq)
 
-
-
-        # exemplar.add(seq=self.seq, pos=pos)
-        self.rep = self.seq[:, -1, :]
+        # find representation
+        self.rep_last = self.seq[:, -1, :]
         self.rep_full = self.seq
 
         pos = tf.reshape(pos, [tf.shape(self.input_seq)[0] * args.maxlen])

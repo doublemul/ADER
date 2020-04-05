@@ -23,56 +23,20 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-def exemplar_generator(args, model, sess, exemplar, period, data_sess, item_list, info):
-    sessions_by_item = defaultdict(list)
-    for _ in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b',
-                  desc='%s exemplar generating 1/2' % info):
-        seq, pos, _ = sampler(data_sess, item_list, batch_size=args.batch_size, maxlen=args.maxlen)
-        pos = np.array(pos)
-        pos = pos[:, -1]
-        for session, item in zip(seq, pos):
-            sessions_by_item[item].append(session)
-
-    for item in tqdm(sessions_by_item.keys(), total=num_batch, ncols=70, leave=False, unit='b',
-                     desc='%s exemplar generating 2/2' % info):
-        seq = sessions_by_item[item]
-        rep = sess.run(model.rep, {model.input_seq: seq, model.is_training: False})
-        exemplar.add(rep=rep, item=item, seq=seq)
-    exemplar.save(period, info)
-
-
-def exemplar_generator_full(args, model, sess, exemplar, period, data_sess, item_list, info):
-    sessions_by_item = defaultdict(list)
-    for _ in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b',
-                  desc='%s exemplar generating 1/2' % info):
-        seq, pos, _ = sampler(data_sess, item_list, batch_size=args.batch_size, maxlen=args.maxlen)
-        rep_full = sess.run(model.rep_full, {model.input_seq: seq, model.is_training: False})
-        for s, p, r in zip(seq, pos, rep_full):
-            for i in range(1, len(p)+1):
-                item = p[-i]
-                session = s[:1-i]
-                rep = r[-i]
-                if item not in sessions_by_item:
-                    sessions_by_item[item] = [[], []]
-                sessions_by_item[item][0].append(session)
-                sessions_by_item[item][1].append(rep)
-    for item in tqdm(sessions_by_item.keys(), total=num_batch, ncols=70, leave=False, unit='b',
-                     desc='%s exemplar generating 2/2' % info):
-        seq, rep = sessions_by_item[item]
-        exemplar.add(rep=rep, item=item, seq=seq)
-    exemplar.save(period, info)
-
-
 def get_periods(args, logs):
+    """
+    This function returns list of periods for joint learning or continue learning
+    :return: [0] for joint learning, [1, 2, ..., period_num] for continue learning
+    """
     if args.is_joint:
         # if joint learning: periods = [0]
-        logs.write('\nJoint Learning\nUsing %s mode.\n' % args.mode)
+        logs.write('\nJoint Learning\n')
         periods = [0]
     else:
         # if continue learning: periods = [1, 2, ..., period_num]
         datafiles = os.listdir(os.path.join('..', '..', 'data', args.dataset))
         period_num = int(len(list(filter(lambda file: file.endswith(".txt"), datafiles))) / 3 - 1)
-        logs.write('\nContinue Learning:Number of periods is %d.\nUsing %s mode.\n' % (period_num, args.mode))
+        logs.write('\nContinue Learning: Number of periods is %d.\n' % period_num)
         periods = range(1, period_num + 1)
     for period in periods:
         if not os.path.isdir(os.path.join('model', 'period%d' % period)):
@@ -80,24 +44,19 @@ def get_periods(args, logs):
     return periods
 
 
-def save_load_args(args):
-    if args.mode == 'train':
-        with open('train_args.txt', 'w') as f:
-            f.write('\n'.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
-    if args.mode == 'test':
-        with open('train_args.txt', 'r') as f:
-            for setting in f:
-                setting = setting.replace('\n', '')
-                argument = setting.split(',')[0]
-                value = setting.split(',')[1]
-                if value.isdigit():
-                    exec('args.%s = %d' % (argument, int(value)))
-                elif value.replace('.', '').isdigit():
-                    exec('args.%s = %f' % (argument, float(value)))
-                elif value == 'True':
-                    exec('args.%s = True' % argument)
-                elif value == 'False':
-                    exec('args.%s = False' % argument)
+def exemplar_load(period):
+    """
+    This function load exemplar in previous period
+    :param period: this period
+    :return: exemplar list
+    """
+    exemplars = []
+    with open('ExemplarSetPeriod=%d.pickle' % (period - 1), mode='rb') as file:
+        exemplars_item = pickle.load(file)
+    for item in exemplars_item.values():
+        if isinstance(item, list):
+            exemplars.extend([i for i in item if i])
+    return exemplars
 
 
 if __name__ == '__main__':
@@ -113,12 +72,10 @@ if __name__ == '__main__':
 
     parser.add_argument('--remove_item', default=True, type=str2bool)
     parser.add_argument('--is_joint', default=True, type=str2bool)
-    parser.add_argument('--is_herding', default=True, type=str2bool)
-
-    parser.add_argument('--mode', default='early_stop', type=str)
+    # early stop parameter
     parser.add_argument('--stop_iter', default=20, type=int)
     parser.add_argument('--display_interval', default=1, type=int)
-
+    # batch size and device
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--test_batch', default=64, type=int)
     parser.add_argument('--device_num', default=0, type=int)
@@ -128,7 +85,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_epochs', default=200, type=int)
     parser.add_argument('--num_heads', default=1, type=int)
     # hyper-parameter fixed
-    parser.add_argument('--hidden_units', default=120, type=int)
+    parser.add_argument('--hidden_units', default=128, type=int)
     parser.add_argument('--maxlen', default=50, type=int)
     parser.add_argument('--dropout_rate', default=0.5, type=float)
     parser.add_argument('--l2_emb', default=0.0, type=float)
@@ -142,90 +99,90 @@ if __name__ == '__main__':
     logs = open('Training_logs.txt', mode='a')
     logs.write('Data set: %s Description: %s\nargs:' % (args.dataset, args.desc))
     logs.write(' '.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
-    save_load_args(args)
 
     # set configurations
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
-    item_num = 43023 if args.dataset == 'DIGINETICA' else 29086
-
-    # periods for joint learning or continue learning situation
-    periods = get_periods(args, logs)
     # build model
-    dataloader = DataLoader(args, logs)
+    item_num = 43023 if args.dataset == 'DIGINETICA' else 29086
     with tf.device('/gpu:%d' % args.device_num):
         model = SASRec(item_num, args)
 
+    # periods for joint learning or continue learning situation
+    periods = get_periods(args, logs)
+
     # Loop each period for continue learning #
+    dataloader = DataLoader(args, logs)
     for period in periods:
         print('Period %d:' % period)
         logs.write('Period %d:\n' % period)
 
         # Load data
-        train_sess = dataloader.train_loader(period=period)
-        valid_sess = dataloader.evaluate_loader(period=period, mode='valid')
-        test_sess = dataloader.evaluate_loader(period=period, mode='test')
-        max_item = dataloader.max_item(period=period)
+        train_sess = dataloader.train_loader(period)
+        cumulative = dataloader.get_cumulative()
+        valid_sess = dataloader.evaluate_loader(period, 'valid')
+        test_sess = dataloader.evaluate_loader(period, 'test')
+        max_item = dataloader.max_item()
 
-        # Start of the main algorithm #
+        # Start of the main algorithm
         num_batch = int(len(train_sess) / args.batch_size)
-        Recall20, stopcounter, best_epoch = 0, 0, 0
-        saver = tf.train.Saver(max_to_keep=20)
-        train_sampler = Sampler(args=args, max_item=max_item, is_train=True)
-
+        Recall20, stop_counter, best_epoch = 0, 0, 0
         with tf.Session(config=config) as sess:
 
-            valid_evaluator = Evaluator(args, valid_sess, max_item, model, 'valid', sess, logs)
             writer = tf.summary.FileWriter('logs/period%d' % period, sess.graph)
+            saver = tf.train.Saver(max_to_keep=5)
+            train_sampler = Sampler(args=args, data=train_sess, max_item=max_item, is_train=True, cumulative=cumulative)
+            valid_evaluator = Evaluator(args, valid_sess, max_item, model, 'valid', sess, logs)
+            test_evaluator = Evaluator(args, test_sess, max_item, model, 'test', sess, logs)
+            train_exemplar = ExemplarGenerator(args, max_item, 3, train_sess, 'train')
+            valid_exemplar = ExemplarGenerator(args, max_item, 3, valid_sess, 'valid')
+
+            # initialize variables or reload from previous period
             sess.run(tf.global_variables_initializer()) if period <= 1 \
                 else saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
 
+            # train
             for epoch in range(1, args.num_epochs + 1):
                 # train each epoch
-                if args.mode == 'train' or args.mode == 'early_stop':
-                    for _ in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b',
-                                  desc='Training epoch %d/%d' % (epoch, args.num_epochs)):
-                        seq, pos, neg = train_sampler.sampler(train_sess)
-                        auc, loss, _, merged, rep = sess.run(
-                            [model.auc, model.loss, model.train_op, model.merged, model.rep],
-                            {model.input_seq: seq, model.pos: pos, model.neg: neg, model.is_training: True})
-                    writer.add_summary(merged, epoch)
-                # evaluate performance or save model every display_interval epoch
+                for _ in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b',
+                              desc='Training epoch %d/%d' % (epoch, args.num_epochs)):
+                    seq, pos, neg = train_sampler.sampler()
+                    auc, loss, _, merged = sess.run([model.auc, model.loss, model.train_op, model.merged],
+                                                    {model.input_seq: seq,
+                                                     model.pos: pos,
+                                                     model.neg: neg,
+                                                     model.is_training: True})
+                writer.add_summary(merged, epoch)
+
+                # evaluate performance and early stop
                 if epoch % args.display_interval == 0:
-                    # save model
-                    if args.mode == 'train':
-                        saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
                     # validate performance
-                    if args.mode == 'test' or args.mode == 'early_stop':
-                        valid_evaluator.full_item(epoch)
-                        recall_20 = valid_evaluator.recall_20
+                    valid_evaluator.full_item(epoch)
+                    recall_20 = valid_evaluator.recall_20
                     # early stop
-                    if args.mode == 'early_stop':
-                        if Recall20 > recall_20:
-                            stopcounter += 1
-                            if stopcounter >= args.stop_iter:
-                                best_epoch = epoch - args.stop_iter * args.display_interval
-                                break
-                        else:
-                            stopcounter = 0
-                            Recall20 = recall_20
-                            best_epoch = epoch
-                            saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
-            # print('Best valid Recall@20 = %f, at epoch %d' % (Recall20, best_epoch))
-            # logs.write('Best valid Recall@20 = %f, at epoch %d\n' % (Recall20, best_epoch))
-            #
-            # # test performance
-            # saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
-            # t_test = evaluate_all(test_sess, item_list, model, args, sess, 'Testing epoch %d' % best_epoch)
-            # info = 'epoch:%d, test (MRR@20: %.4f, RECALL@20: %.4f, MRR@10: %.4f, RECALL@10: %.4f)' \
-            #        % (best_epoch, t_test[0], t_test[1], t_test[2], t_test[3])
-            # print(info)
-            # logs.write(info + '\n')
+                    if Recall20 > recall_20:
+                        stop_counter += 1
+                        if stop_counter >= args.stop_iter:
+                            best_epoch = epoch - args.stop_iter * args.display_interval
+                            break
+                    else:
+                        stop_counter = 0
+                        Recall20 = recall_20
+                        best_epoch = epoch
+                        saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
+
+            # record best valid performance
+            print('Best valid Recall@20 = %f, at epoch %d' % (Recall20, best_epoch))
+            logs.write('Best valid Recall@20 = %f, at epoch %d\n' % (Recall20, best_epoch))
+            # test performance
+            saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
+            test_evaluator.full_item(best_epoch)
 
             # if period > 0:
-            #     exemplar_generator(args, model, sess, exemplar, period, train_sess, item_list, 'Train')
-            #     # full_exemplar_generator(args, model, sess, exemplar, period, valid_sess, item_list, 'Valid')
+            #     train_exemplar.sort_by_last_item(model=model, sess=sess)
+            #     train_exemplar.randomly_by_period()
+            #     train_exemplar.save(period)
 
     logs.write('Done\n\n')
     logs.close()
