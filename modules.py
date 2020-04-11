@@ -12,6 +12,7 @@ import numpy as np
 import pickle
 import os
 
+
 def positional_encoding(dim, sentence_length, dtype=tf.float32):
 
     encoded_vec = np.array([pos/np.power(10000, 2*i/dim) for pos in range(sentence_length) for i in range(dim)])
@@ -19,6 +20,7 @@ def positional_encoding(dim, sentence_length, dtype=tf.float32):
     encoded_vec[1::2] = np.cos(encoded_vec[1::2])
 
     return tf.convert_to_tensor(encoded_vec.reshape([sentence_length, dim]), dtype=dtype)
+
 
 def normalize(inputs, 
               epsilon = 1e-8,
@@ -48,6 +50,7 @@ def normalize(inputs,
         outputs = gamma * normalized + beta
         
     return outputs
+
 
 def embedding(inputs, 
               vocab_size, 

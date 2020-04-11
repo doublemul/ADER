@@ -24,7 +24,7 @@ class SASRec():
                                                  reuse=reuse
                                                  )
 
-            # Positional Encoding
+            # # Positional Encoding
             t, pos_emb_table = embedding(
                 tf.tile(tf.expand_dims(tf.range(tf.shape(self.input_seq)[1]), 0), [tf.shape(self.input_seq)[0], 1]),
                 vocab_size=args.maxlen,
@@ -102,6 +102,26 @@ class SASRec():
         reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
         self.loss += sum(reg_losses)
 
+        ######################################################
+        # pos = tf.reshape(pos[:, -1], [tf.shape(self.input_seq)[0]])
+        # neg = tf.reshape(neg[:, -1], [tf.shape(self.input_seq)[0]])
+        # pos_emb = tf.nn.embedding_lookup(item_emb_table, pos)
+        # neg_emb = tf.nn.embedding_lookup(item_emb_table, neg)
+        # seq_emb = tf.reshape(self.seq[:, -1, :], [tf.shape(self.input_seq)[0], args.hidden_units])
+        # self.pos_logits = tf.reduce_sum(pos_emb * seq_emb, -1)
+        # self.neg_logits = tf.reduce_sum(neg_emb * seq_emb, -1)
+        # self.loss = tf.reduce_sum(
+        #     - tf.log(tf.sigmoid(self.pos_logits) + 1e-24) -
+        #     tf.log(1 - tf.sigmoid(self.neg_logits) + 1e-24))
+        # reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+        # self.loss += sum(reg_losses)
+        # tf.summary.scalar('loss', self.loss)
+        # self.global_step = tf.Variable(0, name='global_step', trainable=False)
+        # self.optimizer = tf.train.AdamOptimizer(learning_rate=args.lr, beta2=0.98)
+        # self.train_op = self.optimizer.minimize(self.loss, global_step=self.global_step)
+        # self.merged = tf.summary.merge_all()
+        ######################################################
+
         tf.summary.scalar('loss', self.loss)
         self.auc = tf.reduce_sum(
             ((tf.sign(self.pos_logits - self.neg_logits) + 1) / 2) * istarget
@@ -110,11 +130,11 @@ class SASRec():
         if reuse is None:
             tf.summary.scalar('auc', self.auc)
             self.global_step = tf.Variable(0, name='global_step', trainable=False)
-            self.optimizer = tf.train.AdamOptimizer(learning_rate=args.lr, beta2=0.98)
+            # self.optimizer = tf.train.AdamOptimizer(learning_rate=args.lr, beta2=0.98)
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=args.lr)
             self.train_op = self.optimizer.minimize(self.loss, global_step=self.global_step)
         else:
             tf.summary.scalar('test_auc', self.auc)
-
         self.merged = tf.summary.merge_all()
 
     def predict(self, sess, seq, item_idx):

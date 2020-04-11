@@ -127,7 +127,8 @@ def time_partition(removed_data, session_end, args):
             time_fraction[period].append([sessId, itemId, time])
 
         # combine first and second time fraction in DIGINETICA and remove the last one
-        if os.getcwd().split('/')[-1] == 'DIGINETICA' and args.time_fraction == 'month':
+        if (os.getcwd().split('/')[-1] == 'DIGINETICA' or os.getcwd().split('/')[-1] == 'DIGINETICA_week') \
+                and args.time_fraction == 'month':
             periods = sorted(time_fraction.keys())
             time_fraction[periods[1]].extend(time_fraction[periods[0]])
             del time_fraction[periods[-1]]
@@ -200,12 +201,13 @@ def generating_txt(time_fraction, sess_end, args):
                 elif sess_end[userId] > last_time[0] - test_threshold:
                     file_test.write('%d %d\n' % (userId, itemId))
 
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='train-item-views.csv', type=str)  # 'yoochoose-clicks.dat'
     parser.add_argument('--time_fraction', default='month', type=str)
-    parser.add_argument('--test_fraction', default='day', type=str)
+    parser.add_argument('--test_fraction', default='week', type=str)
     parser.add_argument('--threshold_sess', default=1, type=int)
     parser.add_argument('--threshold_item', default=4, type=int)
     parser.add_argument('--is_time_fraction', default=True, type=str2bool)
@@ -223,9 +225,9 @@ if __name__ == '__main__':
             os.makedirs(os.path.join('..', 'YOOCHOOSE'))
         os.chdir(os.path.join('..', 'YOOCHOOSE'))
     elif args.dataset.split('.')[0] == 'train-item-views':
-        if not os.path.isdir(os.path.join('..', 'DIGINETICA')):
-            os.makedirs(os.path.join('..', 'DIGINETICA'))
-        os.chdir(os.path.join('..', 'DIGINETICA'))
+        if not os.path.isdir(os.path.join('..', 'DIGINETICA_week')):
+            os.makedirs(os.path.join('..', 'DIGINETICA_week'))
+        os.chdir(os.path.join('..', 'DIGINETICA_week'))
 
     # remove data according to occurrences time
     removed_data, sess_end = short_remove(reformed_data, args)

@@ -44,21 +44,6 @@ def get_periods(args, logs):
     return periods
 
 
-def exemplar_load(period):
-    """
-    This function load exemplar in previous period
-    :param period: this period
-    :return: exemplar list
-    """
-    exemplars = []
-    with open('ExemplarSetPeriod=%d.pickle' % (period - 1), mode='rb') as file:
-        exemplars_item = pickle.load(file)
-    for item in exemplars_item.values():
-        if isinstance(item, list):
-            exemplars.extend([i for i in item if i])
-    return exemplars
-
-
 if __name__ == '__main__':
 
     tf.disable_v2_behavior()
@@ -66,26 +51,29 @@ if __name__ == '__main__':
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', required=True)
-    parser.add_argument('--save_dir', required=True)
-    parser.add_argument('--desc', required=True)
+    # parser.add_argument('--dataset', required=True)
+    # parser.add_argument('--save_dir', required=True)
+    # parser.add_argument('--desc', required=True)
+    parser.add_argument('--dataset', default='DIGINETICA_week', type=str)
+    parser.add_argument('--save_dir', default='ContinueLearning', type=str)
+    parser.add_argument('--desc', default='non_example', type=str)
 
     parser.add_argument('--remove_item', default=True, type=str2bool)
-    parser.add_argument('--is_joint', default=True, type=str2bool)
+    parser.add_argument('--is_joint', default=False, type=str2bool)
     # early stop parameter
     parser.add_argument('--stop_iter', default=20, type=int)
     parser.add_argument('--display_interval', default=1, type=int)
     # batch size and device
-    parser.add_argument('--batch_size', default=128, type=int)
-    parser.add_argument('--test_batch', default=64, type=int)
-    parser.add_argument('--device_num', default=0, type=int)
-    # hyper-parameters grid search
-    parser.add_argument('--lr', default=0.0001, type=float)
-    parser.add_argument('--num_blocks', default=1, type=int)
+    parser.add_argument('--batch_size', default=256, type=int)
+    parser.add_argument('--test_batch', default=32, type=int)
+    parser.add_argument('--device_num', default=1, type=int)
     parser.add_argument('--num_epochs', default=200, type=int)
+    # hyper-parameters grid search
+    parser.add_argument('--lr', default=0.0005, type=float)
+    parser.add_argument('--num_blocks', default=2, type=int)
     parser.add_argument('--num_heads', default=1, type=int)
     # hyper-parameter fixed
-    parser.add_argument('--hidden_units', default=128, type=int)
+    parser.add_argument('--hidden_units', default=150, type=int)
     parser.add_argument('--maxlen', default=50, type=int)
     parser.add_argument('--dropout_rate', default=0.5, type=float)
     parser.add_argument('--l2_emb', default=0.0, type=float)
@@ -114,40 +102,50 @@ if __name__ == '__main__':
 
     # Loop each period for continue learning #
     dataloader = DataLoader(args, logs)
+    plotter = ContinueLearningPlot()
+    best_epoch = 0
     for period in periods:
         print('Period %d:' % period)
         logs.write('Period %d:\n' % period)
 
         # Load data
         train_sess = dataloader.train_loader(period)
-        cumulative = dataloader.get_cumulative()
+        # cumulative = dataloader.get_cumulative()
+        train_item_counter = dataloader.get_item_counter()
         valid_sess = dataloader.evaluate_loader(period, 'valid')
+        valid_item_counter = dataloader.get_item_counter()
         test_sess = dataloader.evaluate_loader(period, 'test')
         max_item = dataloader.max_item()
 
         # Start of the main algorithm
         num_batch = int(len(train_sess) / args.batch_size)
-        Recall20, stop_counter, best_epoch = 0, 0, 0
+        Recall20, stop_counter = 0, 0
         with tf.Session(config=config) as sess:
 
             writer = tf.summary.FileWriter('logs/period%d' % period, sess.graph)
-            saver = tf.train.Saver(max_to_keep=5)
-            train_sampler = Sampler(args=args, data=train_sess, max_item=max_item, is_train=True, cumulative=cumulative)
+            saver = tf.train.Saver(max_to_keep=1)
+            train_sampler = Sampler(args=args, data=train_sess, max_item=max_item, is_train=True)
             valid_evaluator = Evaluator(args, valid_sess, max_item, model, 'valid', sess, logs)
             test_evaluator = Evaluator(args, test_sess, max_item, model, 'test', sess, logs)
-            train_exemplar = ExemplarGenerator(args, max_item, 3, train_sess, 'train')
-            valid_exemplar = ExemplarGenerator(args, max_item, 3, valid_sess, 'valid')
+            # train_exemplar = ExemplarGenerator(args, max_item, 3, train_sess, 'train')
+            # valid_exemplar = ExemplarGenerator(args, max_item, 3, valid_sess, 'valid')
 
             # initialize variables or reload from previous period
-            sess.run(tf.global_variables_initializer()) if period <= 1 \
-                else saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
+            if period <= 1:
+                sess.run(tf.global_variables_initializer())
+            else:
+                saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
+                valid_evaluator.last_item(epoch=0)
+                t_valid = valid_evaluator.results()
+                plotter.add_valid(period, epoch=0, t_valid=t_valid)
+
 
             # train
             for epoch in range(1, args.num_epochs + 1):
                 # train each epoch
                 for _ in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b',
                               desc='Training epoch %d/%d' % (epoch, args.num_epochs)):
-                    seq, pos, neg = train_sampler.sampler()
+                    seq, pos, neg = train_sampler.narm_sampler()
                     auc, loss, _, merged = sess.run([model.auc, model.loss, model.train_op, model.merged],
                                                     {model.input_seq: seq,
                                                      model.pos: pos,
@@ -158,7 +156,9 @@ if __name__ == '__main__':
                 # evaluate performance and early stop
                 if epoch % args.display_interval == 0:
                     # validate performance
-                    valid_evaluator.full_item(epoch)
+                    valid_evaluator.last_item(epoch)
+                    t_valid = valid_evaluator.results()
+                    plotter.add_valid(period, epoch, t_valid)
                     recall_20 = valid_evaluator.recall_20
                     # early stop
                     if Recall20 > recall_20:
@@ -175,15 +175,18 @@ if __name__ == '__main__':
             # record best valid performance
             print('Best valid Recall@20 = %f, at epoch %d' % (Recall20, best_epoch))
             logs.write('Best valid Recall@20 = %f, at epoch %d\n' % (Recall20, best_epoch))
+            plotter.best_epoch(period, best_epoch)
             # test performance
             saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
-            test_evaluator.full_item(best_epoch)
+            test_evaluator.last_item(best_epoch)
+            t_test = test_evaluator.results()
+            plotter.add_test(t_test)
 
             # if period > 0:
             #     train_exemplar.sort_by_last_item(model=model, sess=sess)
             #     train_exemplar.randomly_by_period()
             #     train_exemplar.save(period)
-
+    plotter.plot()
     logs.write('Done\n\n')
     logs.close()
     print('Done')
