@@ -11,8 +11,32 @@ import math
 import tensorflow.compat.v1 as tf
 from SASRec import SASRec
 from tqdm import tqdm
+import tracemalloc
 from util import *
 import gc
+import sys
+
+
+def get_size(obj, seen=None):
+    # From
+    # Recursively finds size of objects
+    size = sys.getsizeof(obj)
+    if seen is None:
+        seen = set()
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+# Important mark as seen *before* entering recursion to gracefully handle
+    # self-referential objects
+    seen.add(obj_id)
+    if isinstance(obj, dict):
+      size += sum([get_size(v, seen) for v in obj.values()])
+      size += sum([get_size(k, seen) for k in obj.keys()])
+    elif hasattr(obj, '__dict__'):
+      size += get_size(obj.__dict__, seen)
+    elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
+      size += sum([get_size(i, seen) for i in obj])
+    return size*1e-6
 
 
 def str2bool(v):
@@ -65,6 +89,7 @@ def load_exemplars(period, mode):
 if __name__ == '__main__':
 
     gc.enable()
+
     tf.disable_v2_behavior()
     tf.logging.set_verbosity(tf.logging.ERROR)
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -76,7 +101,11 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', default='DIGINETICA', type=str)
     parser.add_argument('--save_dir', default='try', type=str) #ContinueLearning
     parser.add_argument('--desc', default='non_example', type=str)
+    # continue learning parameter
     parser.add_argument('--use_exemplar', default=True, type=str2bool)
+    parser.add_argument('--exemplar_size', default=10000, type=int)
+    parser.add_argument('--random_select', default=False, type=str2bool)
+
     parser.add_argument('--is_joint', default=False, type=str2bool)
     parser.add_argument('--remove_item', default=True, type=str2bool)
 
@@ -85,9 +114,9 @@ if __name__ == '__main__':
     parser.add_argument('--display_interval', default=1, type=int)
     # batch size and device
     parser.add_argument('--num_epochs', default=200, type=int)
-    parser.add_argument('--batch_size', default=512, type=int)
+    parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--test_batch', default=32, type=int)
-    parser.add_argument('--device_num', default=0, type=int)
+    parser.add_argument('--device_num', default=1, type=int)
     # hyper-parameters grid search
     parser.add_argument('--lr', default=0.0005, type=float)
     parser.add_argument('--num_blocks', default=2, type=int)
@@ -112,15 +141,14 @@ if __name__ == '__main__':
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
+    # config.gpu_options.per_process_gpu_memory_fraction = 0.4
     # build model
     item_num = 43023 if args.dataset == 'DIGINETICA' else 29086
     with tf.device('/gpu:%d' % args.device_num):
         model = SASRec(item_num, args)
 
-    # periods for joint learning or continue learning situation
-    periods = get_periods(args, logs)
-
     # Loop each period for continue learning #
+    periods = get_periods(args, logs)
     dataloader = DataLoader(args, logs)
     plotter = ContinueLearningPlot(args)
     best_epoch = 0
@@ -132,11 +160,9 @@ if __name__ == '__main__':
         train_sess = dataloader.train_loader(period)
         train_item_counter = dataloader.get_item_counter(load_exemplars(period, 'train')) \
             if args.use_exemplar and period > 1 else dataloader.get_item_counter()
-        # print('original total train : %d' % np.array(train_item_counter).sum())
         valid_sess = dataloader.evaluate_loader(period, 'valid')
         valid_item_counter = dataloader.get_item_counter(load_exemplars(period, 'valid')) \
             if args.use_exemplar and period > 1 else dataloader.get_item_counter()
-        # print('original total valid : %d' % np.array(valid_item_counter).sum())
         test_sess = dataloader.evaluate_loader(period, 'test')
         max_item = dataloader.max_item()
 
@@ -154,8 +180,7 @@ if __name__ == '__main__':
             else:
                 saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
                 valid_evaluator = Evaluator(args, valid_sess, max_item, model, 'valid', sess, logs)
-                valid_evaluator.valid(0, load_exemplars(period, 'valid')) \
-                    if args.use_exemplar else valid_evaluator.test(0)
+                valid_evaluator.evaluate(0, load_exemplars(period, 'valid'))
                 t_valid = valid_evaluator.results()
                 plotter.add_valid(period, epoch=0, t_valid=t_valid)
                 del valid_evaluator
@@ -180,13 +205,14 @@ if __name__ == '__main__':
                 if epoch % args.display_interval == 0:
                     # validate performance
                     valid_evaluator = Evaluator(args, valid_sess, max_item, model, 'valid', sess, logs)
-                    valid_evaluator.valid(epoch, load_exemplars(period, 'valid')) \
-                        if args.use_exemplar and period > 1 else valid_evaluator.test(epoch)
+                    valid_evaluator.evaluate(epoch, load_exemplars(period, 'valid')) \
+                        if args.use_exemplar and period > 1 else valid_evaluator.evaluate(epoch)
                     t_valid = valid_evaluator.results()
                     plotter.add_valid(period, epoch, t_valid)
 
                     # early stop
                     recall_20 = valid_evaluator.recall_20
+                    del valid_evaluator
                     if Recall20 > recall_20:
                         stop_counter += 1
                         if stop_counter >= args.stop_iter:
@@ -197,7 +223,6 @@ if __name__ == '__main__':
                         Recall20 = recall_20
                         best_epoch = epoch
                         saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
-                    del valid_evaluator
 
             # record best valid performance
             print('Best valid Recall@20 = %f, at epoch %d' % (Recall20, best_epoch))
@@ -207,24 +232,30 @@ if __name__ == '__main__':
             # test performance
             saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
             test_evaluator = Evaluator(args, test_sess, max_item, model, 'test', sess, logs)
-            test_evaluator.test(best_epoch)
+            test_evaluator.evaluate(best_epoch)
             t_test = test_evaluator.results()
             plotter.add_test(t_test)
             del test_evaluator
 
             # save exemplars
             if args.use_exemplar:
-                train_exemplar = ExemplarGenerator(args, int(1.5 * max_item), item_num, train_sess, 'train')
+                train_exemplar = ExemplarGenerator(args, args.exemplar_size, item_num, train_sess, 'train')
                 train_exemplar.sort_by_item(load_exemplars(period, 'train')) if period > 1 \
                     else train_exemplar.sort_by_item()
-                train_exemplar.randomly_by_frequency(train_item_counter)
+                if args.random_select:
+                    train_exemplar.randomly_by_frequency(train_item_counter)
+                else:
+                    train_exemplar.herding_by_frequency(train_item_counter, sess, model)
                 train_exemplar.save(period)
                 del train_exemplar
 
-                valid_exemplar = ExemplarGenerator(args, int(0.1 * max_item), item_num, valid_sess, 'valid')
+                valid_exemplar = ExemplarGenerator(args, int(1/30 * args.exemplar_size), item_num, valid_sess, 'valid')
                 valid_exemplar.sort_by_item(load_exemplars(period, 'valid')) if period > 1 \
                     else valid_exemplar.sort_by_item()
-                valid_exemplar.randomly_by_frequency(valid_item_counter)
+                if args.random_select:
+                    valid_exemplar.randomly_by_frequency(valid_item_counter)
+                else:
+                    valid_exemplar.herding_by_frequency(valid_item_counter, sess, model)
                 valid_exemplar.save(period)
                 del valid_exemplar
 
@@ -232,6 +263,8 @@ if __name__ == '__main__':
     logs.write('Done\n\n')
     logs.close()
     print('Done')
+
+
 
 
 

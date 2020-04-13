@@ -47,8 +47,9 @@ class DataLoader:
                 Sessions[sessId].append(itemId)
                 self.item_counter[itemId] += 1
         sessions = list(Sessions.values())
-        if period > 1:
-            sessions.extend(self.load_previous_evaluate_data(period))
+        del Sessions
+        # if period > 1:
+        #     sessions.extend(self.load_previous_evaluate_data(period))
         info = 'Train set information: total number of action: %d.' \
                % sum(list(map(lambda session: len(session), sessions)))
         self.logs.write(info + '\n')
@@ -59,24 +60,26 @@ class DataLoader:
 
         return sessions
 
-    def load_previous_evaluate_data(self, period):
-        """
-        This method return valid and test data from previous period to be extended behind current train data
-        :param period: current period
-        :return valid and test data from previous period
-        """
-        period = period - 1
-        Sessions = defaultdict(list)
-        for name in ['valid', 'test']:
-            with open(self.path + '/%s_%d.txt' % (name, period), 'r') as f:
-                for line in f:
-                    sessId, itemId = line.rstrip().split(' ')
-                    sessId = int(sessId)
-                    itemId = int(itemId)
-                    self.item_set.add(itemId)
-                    self.item_counter[itemId] += 1
-                    Sessions[sessId].append(itemId)
-        return list(Sessions.values())
+    # def load_previous_evaluate_data(self, period):
+    #     """
+    #     This method return valid and test data from previous period to be extended behind current train data
+    #     :param period: current period
+    #     :return valid and test data from previous period
+    #     """
+    #     period = period - 1
+    #     Sessions = defaultdict(list)
+    #     for name in ['valid', 'test']:
+    #         with open(self.path + '/%s_%d.txt' % (name, period), 'r') as f:
+    #             for line in f:
+    #                 sessId, itemId = line.rstrip().split(' ')
+    #                 sessId = int(sessId)
+    #                 itemId = int(itemId)
+    #                 self.item_set.add(itemId)
+    #                 self.item_counter[itemId] += 1
+    #                 Sessions[sessId].append(itemId)
+    #     sessions = list(Sessions.values())
+    #     del Sessions
+    #     return sessions
 
     def get_item_counter(self, exemplar=None):
         """
@@ -137,6 +140,7 @@ class DataLoader:
         self.logs.write(info + '\n')
         print(info)
         sessions = list(Sessions.values())
+        del Sessions
 
         for sess in sessions:
             self.item_counter[sess[0]] -= 1
@@ -147,9 +151,9 @@ class DataLoader:
         """
         This method returns the maximum item in item set.
         """
-        if len(self.item_set) != max(self.item_set):
-            print('Item index error!')
-            self.logs.write('Item index error!')
+        # if len(self.item_set) != max(self.item_set):
+        #     print('Item index error!')
+        #     self.logs.write('Item index error!')
         return max(self.item_set)
 
 
@@ -222,14 +226,14 @@ class Sampler:
         This method generate negative sample. If cumulative is given, it generate by item frequency
         :param session: the generated negative sample should not in the original session
         """
-        if self.cumulative is None:
+        # if self.cumulative is None:
+        neg = random.randint(1, self.max_item)
+        while neg in session:
             neg = random.randint(1, self.max_item)
-            while neg in session:
-                neg = random.randint(1, self.max_item)
-        else:
-            neg = self.cumulative.searchsorted(np.random.randint(self.cumulative[-1])) + 1
-            while neg in session:
-                neg = self.cumulative.searchsorted(np.random.randint(self.cumulative[-1])) + 1
+        # else:
+        #     neg = self.cumulative.searchsorted(np.random.randint(self.cumulative[-1])) + 1
+        #     while neg in session:
+        #         neg = self.cumulative.searchsorted(np.random.randint(self.cumulative[-1])) + 1
         return neg
 
     def narm_sampler(self, reuse=None):
@@ -314,7 +318,7 @@ class Evaluator:
         self.recall_20 = 0
         self.desc = 'Validating epoch ' if mode == 'valid' else 'Testing epoch '
 
-    def valid(self, epoch, exemplar):
+    def evaluate(self, epoch, exemplar=None):
         """
         This method only evaluate performance of predicted last item among all existing item.
         :param exemplar: valid exemplar from previous period
@@ -325,32 +329,11 @@ class Evaluator:
         sampler = Sampler(args=self.args, data=self.data, max_item=self.max_item, is_train=False)
         for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
                       desc=self.desc + str(epoch)):
-            seq, pos = sampler.hybrid_sampler(exemplar)
+            seq, pos = sampler.hybrid_sampler(exemplar) if exemplar else sampler.narm_sampler()
             predictions = self.model.predict(self.sess, seq, list(range(1, self.max_item + 1)))
             ground_truth = [sess[-1] for sess in pos]
             rank = [pred[index - 1] for pred, index in zip(predictions, ground_truth)]
             self.ranks.extend(rank)
-        del sampler
-        del predictions
-        del ground_truth
-        self.display(epoch)
-
-    def test(self, epoch):
-        """
-        This method only evaluate performance of predicted last item among all existing item.
-        :param epoch: current epoch
-        """
-        self.ranks = []
-        batch_num = math.ceil(len(self.data) / self.args.test_batch)
-        sampler = Sampler(args=self.args, data=self.data, max_item=self.max_item, is_train=False)
-        for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
-                      desc=self.desc + str(epoch)):
-            seq, pos = sampler.narm_sampler()
-            predictions = self.model.predict(self.sess, seq, list(range(1, self.max_item + 1)))
-            ground_truth = [sess[-1] for sess in pos]
-            rank = [pred[index - 1] for pred, index in zip(predictions, ground_truth)]
-            self.ranks.extend(rank)
-        del sampler
         self.display(epoch)
 
     def results(self):
@@ -448,14 +431,16 @@ class ExemplarGenerator:
         item_count = np.floor(item_count)
         item_count = np.int32(item_count)
 
-        for item in self.sess_rep_by_item:
-            seq = self.sess_rep_by_item[item]
-            rep = sess.run(model.rep_last, {model.input_seq: seq, model.is_training: False})
-            seq = np.array(seq)
-            rep = np.array(rep)
+        for item in tqdm(self.sess_rep_by_item,  ncols=70, leave=False, unit='b', desc='Selecting exemplar'):
             m = item_count[item - 1]
-            if m > 0:
-                self.herding(rep, item, seq, min(m, len(seq)))
+            if m < 0.5:
+                continue
+            seq = self.sess_rep_by_item[item]
+            seq = np.array(seq)
+            input_seq = seq[:, :-1]
+            rep = sess.run(model.rep_last, {model.input_seq: input_seq, model.is_training: False})
+            rep = np.array(rep)
+            self.herding(rep, item, seq, min(m, len(seq)))
         del self.sess_rep_by_item
 
     # def herding_by_period(self):
@@ -611,7 +596,8 @@ class ContinueLearningPlot:
                 p += 1
 
         plt.xticks(range(1, x_max + 1), x_label)
-        plt.title('%s\ncontinue learning results\n%s' % (self.args.dataset, self.args.desc))
+        plt.title('%s\ncontinue learning results\n%s exemplar_size_%d'
+                  % (self.args.dataset, self.args.desc, self.args.exemplar_size))
         plt.legend()
         plt.show()
 
