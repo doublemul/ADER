@@ -78,7 +78,7 @@ class DataLoader:
                     Sessions[sessId].append(itemId)
         return list(Sessions.values())
 
-    def get_item_counter(self):
+    def get_item_counter(self, exemplar=None):
         """
         This method return numbers of
         :return: list of cumulative numbers with length of maximum item
@@ -87,6 +87,10 @@ class DataLoader:
         item_count = np.zeros(max_item)
         for item in self.item_counter.keys():
             item_count[item - 1] = self.item_counter[item]
+
+        if exemplar:
+            for sess in exemplar:
+                item_count[sess[-1]-1] += 1
         return item_count
 
     def evaluate_loader(self, period, mode):
@@ -262,7 +266,7 @@ class Sampler:
             random.shuffle(self.exemplar_indices)
             self.exemplar_initialized = True
 
-        exemplar_batch_size = math.floor(len(exemplar) / self.batch_num)
+        exemplar_batch_size = math.ceil(len(exemplar) / self.batch_num)
         one_batch.extend(self.exemplar_sampler(exemplar_batch_size, exemplar))
         one_batch.extend(self.narm_sampler(reuse=True))
         return zip(*one_batch)
@@ -326,6 +330,9 @@ class Evaluator:
             ground_truth = [sess[-1] for sess in pos]
             rank = [pred[index - 1] for pred, index in zip(predictions, ground_truth)]
             self.ranks.extend(rank)
+        del sampler
+        del predictions
+        del ground_truth
         self.display(epoch)
 
     def test(self, epoch):
@@ -343,6 +350,7 @@ class Evaluator:
             ground_truth = [sess[-1] for sess in pos]
             rank = [pred[index - 1] for pred, index in zip(predictions, ground_truth)]
             self.ranks.extend(rank)
+        del sampler
         self.display(epoch)
 
     def results(self):
@@ -391,7 +399,7 @@ class ExemplarGenerator:
         self.max_item = max_item
         self.data = data
 
-    def sort_by_last_item(self, model, sess):
+    def sort_by_item(self, exemplar=None):
         """
         This method sorts sessions by their last item.
         """
@@ -400,12 +408,12 @@ class ExemplarGenerator:
         batch_num = math.ceil(len(self.data) / self.args.test_batch)
         for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
                       desc='Sorting %s exemplars' % self.mode):
-            seq, pos = sampler.narm_sampler()
-            rep_last = sess.run(model.rep_last, {model.input_seq: seq, model.is_training: False})
+            seq, pos = sampler.hybrid_sampler(exemplar) if exemplar else sampler.narm_sampler()
             pos = np.array(pos)[:, -1]
-            for session, item, rep in zip(seq, pos, rep_last):
+            for session, item in zip(seq, pos):
                 session = np.append(session, item)
-                self.sess_rep_by_item[item].append([session, rep])
+                self.sess_rep_by_item[item].append(session)
+        del sampler
 
     def herding(self, rep, item, seq, m):
         """
@@ -429,7 +437,7 @@ class ExemplarGenerator:
             if tmp_exemplar not in self.exemplars[item]:
                 self.exemplars[item].append(tmp_exemplar)
 
-    def herding_by_frequency(self, item_count):
+    def herding_by_frequency(self, item_count, sess, model):
         """
         This method selects exemplars using herding and selects exemplars, the number of exemplars is proportional to
         item frequency.
@@ -441,26 +449,28 @@ class ExemplarGenerator:
         item_count = np.int32(item_count)
 
         for item in self.sess_rep_by_item:
-            seq, rep = zip(*self.sess_rep_by_item[item])
+            seq = self.sess_rep_by_item[item]
+            rep = sess.run(model.rep_last, {model.input_seq: seq, model.is_training: False})
             seq = np.array(seq)
             rep = np.array(rep)
             m = item_count[item - 1]
             if m > 0:
                 self.herding(rep, item, seq, min(m, len(seq)))
+        del self.sess_rep_by_item
 
-    def herding_by_period(self):
-        """
-        This method selects exemplars using herding algorithm among all labels.
-        """
-        self.exemplars = dict()
-        self.exemplars = {'herding_period': []}
-        full_data = []
-        for item in self.sess_rep_by_item:
-            full_data.extend(self.sess_rep_by_item[item])
-        seq, rep = zip(*full_data)
-        seq = np.array(seq)
-        rep = np.array(rep)
-        self.herding(rep, 'herding_period', seq, self.m)
+    # def herding_by_period(self):
+    #     """
+    #     This method selects exemplars using herding algorithm among all labels.
+    #     """
+    #     self.exemplars = dict()
+    #     self.exemplars = {'herding_period': []}
+    #     full_data = []
+    #     for item in self.sess_rep_by_item:
+    #         full_data.extend(self.sess_rep_by_item[item])
+    #     seq, rep = zip(*full_data)
+    #     seq = np.array(seq)
+    #     rep = np.array(rep)
+    #     self.herding(rep, 'herding_period', seq, self.m)
 
     def randomly_by_frequency(self, item_count):
         """
@@ -471,33 +481,34 @@ class ExemplarGenerator:
         item_count = item_count * (self.m / item_count.sum())
         item_count = np.floor(item_count)
         item_count = np.int32(item_count)
-        #
+
         # total_num = 0
         # for item in sorted(self.sess_rep_by_item):
-        #     seq, _ = zip(*self.sess_rep_by_item[item])
+        #     seq = self.sess_rep_by_item[item]
         #     total_num += len(seq)
         # print('after sort number%d' % total_num)
 
         for item in self.sess_rep_by_item:
-            seq, _ = zip(*self.sess_rep_by_item[item])
+            seq = self.sess_rep_by_item[item]
             seq = np.array(seq)
             seq_num = len(seq)
             m = item_count[item - 1]
             if m > 0:
                 selected_ids = np.random.choice(seq_num, min(m, seq_num), replace=False)
                 self.exemplars[item] = [seq[i].tolist() for i in selected_ids]
+        del self.sess_rep_by_item
 
-    def randomly_by_period(self):
-        """
-        This method randomly selects exemplars among all labels.
-        """
-        self.exemplars = dict()
-        self.exemplars = {'random_period': []}
-        for _ in range(self.m):
-            random_item = random.choice(list(self.sess_rep_by_item.keys()))
-            seq, _ = random.choice(self.sess_rep_by_item[random_item])
-            seq = seq.tolist()
-            self.exemplars['random_period'].append(seq)
+    # def randomly_by_period(self):
+    #     """
+    #     This method randomly selects exemplars among all labels.
+    #     """
+    #     self.exemplars = dict()
+    #     self.exemplars = {'random_period': []}
+    #     for _ in range(self.m):
+    #         random_item = random.choice(list(self.sess_rep_by_item.keys()))
+    #         seq, _ = random.choice(self.sess_rep_by_item[random_item])
+    #         seq = seq.tolist()
+    #         self.exemplars['random_period'].append(seq)
 
     def save(self, period):
         """
@@ -507,20 +518,7 @@ class ExemplarGenerator:
             os.makedirs(os.path.join('exemplar'))
         with open('exemplar/%sExemplarPeriod=%d.pickle' % (self.mode, period), mode='wb') as file:
             pickle.dump(self.exemplars, file)
-
-    def load(self, period):
-        """
-        This method load exemplar in previous period
-        :param period: this period
-        :return: exemplar list
-        """
-        exemplars = []
-        with open('exemplar/%sExemplarPeriod=%d.pickle' % (self.mode, period - 1), mode='rb') as file:
-            exemplars_item = pickle.load(file)
-        for item in exemplars_item.values():
-            if isinstance(item, list):
-                exemplars.extend([i for i in item if i])
-        return exemplars
+        del self.exemplars
 
 
 class ContinueLearningPlot:

@@ -12,6 +12,7 @@ import tensorflow.compat.v1 as tf
 from SASRec import SASRec
 from tqdm import tqdm
 from util import *
+import gc
 
 
 def str2bool(v):
@@ -46,8 +47,24 @@ def get_periods(args, logs):
     return periods
 
 
+def load_exemplars(period, mode):
+    """
+    This method load exemplar in previous period
+    :param period: this period
+    :return: exemplar list
+    """
+    exemplars = []
+    with open('exemplar/%sExemplarPeriod=%d.pickle' % (mode, period - 1), mode='rb') as file:
+        exemplars_item = pickle.load(file)
+    for item in exemplars_item.values():
+        if isinstance(item, list):
+            exemplars.extend([i for i in item if i])
+    return exemplars
+
+
 if __name__ == '__main__':
 
+    gc.enable()
     tf.disable_v2_behavior()
     tf.logging.set_verbosity(tf.logging.ERROR)
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -113,10 +130,13 @@ if __name__ == '__main__':
 
         # Load data
         train_sess = dataloader.train_loader(period)
-        train_item_counter = dataloader.get_item_counter()
-        # print('total: %d' % np.array(train_item_counter).sum())
+        train_item_counter = dataloader.get_item_counter(load_exemplars(period, 'train')) \
+            if args.use_exemplar and period > 1 else dataloader.get_item_counter()
+        # print('original total train : %d' % np.array(train_item_counter).sum())
         valid_sess = dataloader.evaluate_loader(period, 'valid')
-        valid_item_counter = dataloader.get_item_counter()
+        valid_item_counter = dataloader.get_item_counter(load_exemplars(period, 'valid')) \
+            if args.use_exemplar and period > 1 else dataloader.get_item_counter()
+        # print('original total valid : %d' % np.array(valid_item_counter).sum())
         test_sess = dataloader.evaluate_loader(period, 'test')
         max_item = dataloader.max_item()
 
@@ -128,20 +148,14 @@ if __name__ == '__main__':
             writer = tf.summary.FileWriter('logs/period%d' % period, sess.graph)
             saver = tf.train.Saver(max_to_keep=1)
 
-            if args.use_exemplar:
-                train_exemplar = ExemplarGenerator(args, int(1.5 * max_item), item_num, train_sess, 'train')
-                valid_exemplar = ExemplarGenerator(args, int(0.1 * max_item), item_num, valid_sess, 'valid')
-
             # initialize variables or reload from previous period
             if period <= 1:
                 sess.run(tf.global_variables_initializer())
             else:
                 saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
                 valid_evaluator = Evaluator(args, valid_sess, max_item, model, 'valid', sess, logs)
-                if args.use_exemplar:
-                    valid_evaluator.valid(0, valid_exemplar.load(period))
-                else:
-                    valid_evaluator.test(0)
+                valid_evaluator.valid(0, load_exemplars(period, 'valid')) \
+                    if args.use_exemplar else valid_evaluator.test(0)
                 t_valid = valid_evaluator.results()
                 plotter.add_valid(period, epoch=0, t_valid=t_valid)
                 del valid_evaluator
@@ -152,11 +166,8 @@ if __name__ == '__main__':
                 train_sampler = Sampler(args=args, data=train_sess, max_item=max_item, is_train=True)
                 for i in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b',
                               desc='Training epoch %d/%d' % (epoch, args.num_epochs)):
-                    if period <= 1 or not args.use_exemplar:
-                        seq, pos, neg = train_sampler.narm_sampler()
-                    else:
-                        seq, pos, neg = train_sampler.hybrid_sampler(train_exemplar.load(period))
-
+                    seq, pos, neg = train_sampler.hybrid_sampler(load_exemplars(period, 'train')) \
+                        if args.use_exemplar and period > 1 else train_sampler.narm_sampler()
                     auc, loss, _, merged = sess.run([model.auc, model.loss, model.train_op, model.merged],
                                                     {model.input_seq: seq,
                                                      model.pos: pos,
@@ -169,13 +180,8 @@ if __name__ == '__main__':
                 if epoch % args.display_interval == 0:
                     # validate performance
                     valid_evaluator = Evaluator(args, valid_sess, max_item, model, 'valid', sess, logs)
-                    if period <= 1:
-                        valid_evaluator.test(epoch)
-                    else:
-                        if args.use_exemplar:
-                            valid_evaluator.valid(epoch, valid_exemplar.load(period))
-                        else:
-                            valid_evaluator.test(epoch)
+                    valid_evaluator.valid(epoch, load_exemplars(period, 'valid')) \
+                        if args.use_exemplar and period > 1 else valid_evaluator.test(epoch)
                     t_valid = valid_evaluator.results()
                     plotter.add_valid(period, epoch, t_valid)
 
@@ -208,12 +214,19 @@ if __name__ == '__main__':
 
             # save exemplars
             if args.use_exemplar:
-                train_exemplar.sort_by_last_item(model=model, sess=sess)
+                train_exemplar = ExemplarGenerator(args, int(1.5 * max_item), item_num, train_sess, 'train')
+                train_exemplar.sort_by_item(load_exemplars(period, 'train')) if period > 1 \
+                    else train_exemplar.sort_by_item()
                 train_exemplar.randomly_by_frequency(train_item_counter)
                 train_exemplar.save(period)
-                valid_exemplar.sort_by_last_item(model=model, sess=sess)
+                del train_exemplar
+
+                valid_exemplar = ExemplarGenerator(args, int(0.1 * max_item), item_num, valid_sess, 'valid')
+                valid_exemplar.sort_by_item(load_exemplars(period, 'valid')) if period > 1 \
+                    else valid_exemplar.sort_by_item()
                 valid_exemplar.randomly_by_frequency(valid_item_counter)
                 valid_exemplar.save(period)
+                del valid_exemplar
 
     plotter.plot()
     logs.write('Done\n\n')
