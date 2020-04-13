@@ -210,7 +210,7 @@ if __name__ == '__main__':
     parser.add_argument('--test_fraction', default='week', type=str)
     parser.add_argument('--threshold_sess', default=1, type=int)
     parser.add_argument('--threshold_item', default=4, type=int)
-    parser.add_argument('--is_time_fraction', default=True, type=str2bool)
+    parser.add_argument('--is_time_fraction', default=False, type=str2bool)
     parser.add_argument('--yoochoose_select', default=0.25, type=float)
     args = parser.parse_args()
     # args.dataset = 'yoochoose-clicks.dat'

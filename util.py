@@ -574,8 +574,8 @@ class ContinueLearningPlot:
             if i == 0:
                 plt.plot(x_counter[period], self.MRR20[period], color='r', label='MRR@20')
                 plt.plot(x_counter[period], self.MRR10[period], color='g', label='MRR@10')
-                plt.plot(x_counter[period], self.RECALL20[period], color='b', label='RECALL20')
-                plt.plot(x_counter[period], self.RECALL10[period], color='y', label='RECALL10')
+                plt.plot(x_counter[period], self.RECALL20[period], color='b', label='RECALL@20')
+                plt.plot(x_counter[period], self.RECALL10[period], color='y', label='RECALL@10')
             else:
                 plt.plot(x_counter[period], self.MRR20[period], color='r')
                 plt.plot(x_counter[period], self.MRR10[period], color='g')
