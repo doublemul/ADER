@@ -17,28 +17,6 @@ import gc
 import sys
 
 
-def get_size(obj, seen=None):
-    # From
-    # Recursively finds size of objects
-    size = sys.getsizeof(obj)
-    if seen is None:
-        seen = set()
-    obj_id = id(obj)
-    if obj_id in seen:
-        return 0
-# Important mark as seen *before* entering recursion to gracefully handle
-    # self-referential objects
-    seen.add(obj_id)
-    if isinstance(obj, dict):
-      size += sum([get_size(v, seen) for v in obj.values()])
-      size += sum([get_size(k, seen) for k in obj.keys()])
-    elif hasattr(obj, '__dict__'):
-      size += get_size(obj.__dict__, seen)
-    elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
-      size += sum([get_size(i, seen) for i in obj])
-    return size*1e-6
-
-
 def str2bool(v):
     if isinstance(v, bool):
         return v
@@ -71,19 +49,22 @@ def get_periods(args, logs):
     return periods
 
 
-def load_exemplars(period, mode):
+def load_exemplars(period, use_exemplar, mode):
     """
     This method load exemplar in previous period
     :param period: this period
     :return: exemplar list
     """
-    exemplars = []
-    with open('exemplar/%sExemplarPeriod=%d.pickle' % (mode, period - 1), mode='rb') as file:
-        exemplars_item = pickle.load(file)
-    for item in exemplars_item.values():
-        if isinstance(item, list):
-            exemplars.extend([i for i in item if i])
-    return exemplars
+    if period > 1 and use_exemplar:
+        exemplars = []
+        with open('exemplar/%sExemplarPeriod=%d.pickle' % (mode, period - 1), mode='rb') as file:
+            exemplars_item = pickle.load(file)
+        for item in exemplars_item.values():
+            if isinstance(item, list):
+                exemplars.extend([i for i in item if i])
+        return exemplars
+    else:
+        return None
 
 
 if __name__ == '__main__':
@@ -103,7 +84,7 @@ if __name__ == '__main__':
     parser.add_argument('--desc', default='non_example', type=str)
     # continue learning parameter
     parser.add_argument('--use_exemplar', default=True, type=str2bool)
-    parser.add_argument('--exemplar_size', default=10000, type=int)
+    parser.add_argument('--exemplar_size', default=20000, type=int)
     parser.add_argument('--random_select', default=False, type=str2bool)
 
     parser.add_argument('--is_joint', default=False, type=str2bool)
@@ -116,7 +97,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_epochs', default=200, type=int)
     parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--test_batch', default=32, type=int)
-    parser.add_argument('--device_num', default=1, type=int)
+    parser.add_argument('--device_num', default=0, type=int)
     # hyper-parameters grid search
     parser.add_argument('--lr', default=0.0005, type=float)
     parser.add_argument('--num_blocks', default=2, type=int)
@@ -141,7 +122,7 @@ if __name__ == '__main__':
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
-    # config.gpu_options.per_process_gpu_memory_fraction = 0.4
+    config.gpu_options.per_process_gpu_memory_fraction = 0.3
     # build model
     item_num = 43023 if args.dataset == 'DIGINETICA' else 29086
     with tf.device('/gpu:%d' % args.device_num):
@@ -156,18 +137,19 @@ if __name__ == '__main__':
         print('Period %d:' % period)
         logs.write('Period %d:\n' % period)
 
+        # Load exemplar
+        train_exemplar_data = load_exemplars(period, args.use_exemplar, 'train')
+        valid_exemplar_data = load_exemplars(period, args.use_exemplar, 'valid')
+
         # Load data
         train_sess = dataloader.train_loader(period)
-        train_item_counter = dataloader.get_item_counter(load_exemplars(period, 'train')) \
-            if args.use_exemplar and period > 1 else dataloader.get_item_counter()
+        train_item_counter = dataloader.get_item_counter(train_exemplar_data)
         valid_sess = dataloader.evaluate_loader(period, 'valid')
-        valid_item_counter = dataloader.get_item_counter(load_exemplars(period, 'valid')) \
-            if args.use_exemplar and period > 1 else dataloader.get_item_counter()
+        valid_item_counter = dataloader.get_item_counter(valid_exemplar_data)
         test_sess = dataloader.evaluate_loader(period, 'test')
         max_item = dataloader.max_item()
 
         # Start of the main algorithm
-        num_batch = math.ceil(len(train_sess) / args.batch_size)
         Recall20, stop_counter = 0, 0
         with tf.Session(config=config) as sess:
 
@@ -179,20 +161,21 @@ if __name__ == '__main__':
                 sess.run(tf.global_variables_initializer())
             else:
                 saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
-                valid_evaluator = Evaluator(args, valid_sess, max_item, model, 'valid', sess, logs)
-                valid_evaluator.evaluate(0, load_exemplars(period, 'valid'))
+                valid_evaluator = Evaluator(args, valid_sess, max_item, 'valid', model, sess, logs)
+                valid_evaluator.evaluate(0, valid_exemplar_data)
                 t_valid = valid_evaluator.results()
                 plotter.add_valid(period, epoch=0, t_valid=t_valid)
                 del valid_evaluator
 
             # train
             for epoch in range(1, args.num_epochs + 1):
+                train_sampler = Sampler(args, train_sess, args.batch_size, True, max_item)
+                train_sampler.prepare_data(train_exemplar_data)
+                batch_num = train_sampler.batch_num
                 # train each epoch
-                train_sampler = Sampler(args=args, data=train_sess, max_item=max_item, is_train=True)
-                for i in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b',
+                for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
                               desc='Training epoch %d/%d' % (epoch, args.num_epochs)):
-                    seq, pos, neg = train_sampler.hybrid_sampler(load_exemplars(period, 'train')) \
-                        if args.use_exemplar and period > 1 else train_sampler.narm_sampler()
+                    seq, pos, neg = train_sampler.sampler()
                     auc, loss, _, merged = sess.run([model.auc, model.loss, model.train_op, model.merged],
                                                     {model.input_seq: seq,
                                                      model.pos: pos,
@@ -204,15 +187,14 @@ if __name__ == '__main__':
                 # evaluate performance and early stop
                 if epoch % args.display_interval == 0:
                     # validate performance
-                    valid_evaluator = Evaluator(args, valid_sess, max_item, model, 'valid', sess, logs)
-                    valid_evaluator.evaluate(epoch, load_exemplars(period, 'valid')) \
-                        if args.use_exemplar and period > 1 else valid_evaluator.evaluate(epoch)
+                    valid_evaluator = Evaluator(args, valid_sess, max_item, 'valid', model, sess, logs)
+                    valid_evaluator.evaluate(epoch, valid_exemplar_data)
                     t_valid = valid_evaluator.results()
                     plotter.add_valid(period, epoch, t_valid)
+                    del valid_evaluator
 
                     # early stop
-                    recall_20 = valid_evaluator.recall_20
-                    del valid_evaluator
+                    recall_20 = t_valid[1]
                     if Recall20 > recall_20:
                         stop_counter += 1
                         if stop_counter >= args.stop_iter:
@@ -231,17 +213,15 @@ if __name__ == '__main__':
 
             # test performance
             saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
-            test_evaluator = Evaluator(args, test_sess, max_item, model, 'test', sess, logs)
+            test_evaluator = Evaluator(args, test_sess, max_item, 'test', model, sess, logs)
             test_evaluator.evaluate(best_epoch)
-            t_test = test_evaluator.results()
-            plotter.add_test(t_test)
+            plotter.add_test(test_evaluator.results())
             del test_evaluator
 
             # save exemplars
             if args.use_exemplar:
                 train_exemplar = ExemplarGenerator(args, args.exemplar_size, item_num, train_sess, 'train')
-                train_exemplar.sort_by_item(load_exemplars(period, 'train')) if period > 1 \
-                    else train_exemplar.sort_by_item()
+                train_exemplar.sort_by_item(train_exemplar_data)
                 if args.random_select:
                     train_exemplar.randomly_by_frequency(train_item_counter)
                 else:
@@ -249,9 +229,8 @@ if __name__ == '__main__':
                 train_exemplar.save(period)
                 del train_exemplar
 
-                valid_exemplar = ExemplarGenerator(args, int(1/30 * args.exemplar_size), item_num, valid_sess, 'valid')
-                valid_exemplar.sort_by_item(load_exemplars(period, 'valid')) if period > 1 \
-                    else valid_exemplar.sort_by_item()
+                valid_exemplar = ExemplarGenerator(args, int(1/30 * args.exemplar_size), max_item, valid_sess, 'valid')
+                valid_exemplar.sort_by_item(valid_exemplar_data)
                 if args.random_select:
                     valid_exemplar.randomly_by_frequency(valid_item_counter)
                 else:
