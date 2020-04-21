@@ -59,7 +59,7 @@ def short_remove(reformed_data, args):
     :return removed_data: result data after removing
     :return sess_end: a map recording session end time, a dictionary sess_end[sessId]=end_time
     """
-    if args.yoochoose_select and os.getcwd().split('/')[-1] == 'YOOCHOOSE':
+    if args.yoochoose_select and not args.is_time_fraction and os.getcwd().split('/')[-1] == 'YOOCHOOSE':
         threshold = np.percentile(list(map(lambda x: x[2], reformed_data)), (1 - args.yoochoose_select) * 100)
         reformed_data = list(filter(lambda x: x[2] > threshold, reformed_data))
 
@@ -207,13 +207,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='train-item-views.csv', type=str)  # 'yoochoose-clicks.dat'
     parser.add_argument('--time_fraction', default='month', type=str)
-    parser.add_argument('--test_fraction', default='week', type=str)
+    parser.add_argument('--test_fraction', default='day', type=str)
     parser.add_argument('--threshold_sess', default=1, type=int)
     parser.add_argument('--threshold_item', default=4, type=int)
-    parser.add_argument('--is_time_fraction', default=False, type=str2bool)
+    parser.add_argument('--is_time_fraction', default=True, type=str2bool)
     parser.add_argument('--yoochoose_select', default=0.25, type=float)
     args = parser.parse_args()
-    # args.dataset = 'yoochoose-clicks.dat'
+    args.dataset = 'yoochoose-clicks.dat'
     print('Start preprocess ' + args.dataset + ':')
 
     # load data and get the session and item lookup table
@@ -225,9 +225,9 @@ if __name__ == '__main__':
             os.makedirs(os.path.join('..', 'YOOCHOOSE'))
         os.chdir(os.path.join('..', 'YOOCHOOSE'))
     elif args.dataset.split('.')[0] == 'train-item-views':
-        if not os.path.isdir(os.path.join('..', 'DIGINETICA_week')):
-            os.makedirs(os.path.join('..', 'DIGINETICA_week'))
-        os.chdir(os.path.join('..', 'DIGINETICA_week'))
+        if not os.path.isdir(os.path.join('..', 'DIGINETICA')):
+            os.makedirs(os.path.join('..', 'DIGINETICA'))
+        os.chdir(os.path.join('..', 'DIGINETICA'))
 
     # remove data according to occurrences time
     removed_data, sess_end = short_remove(reformed_data, args)
@@ -238,6 +238,8 @@ if __name__ == '__main__':
     # generate final txt file
     generating_txt(time_fraction, sess_end, args)
 
-    if args.is_time_fraction: plot_stat(time_fraction)
+    if args.is_time_fraction:
+        plot_stat(time_fraction)
+        plot_new_old_label(time_fraction, sess_end, args)
 
     print(args.dataset + ' finish!')

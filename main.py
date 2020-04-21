@@ -9,12 +9,14 @@ import argparse
 import os
 import math
 import tensorflow.compat.v1 as tf
-from SASRec import SASRec
+from SASRec_modify import SASRec
 from tqdm import tqdm
 import tracemalloc
 from util import *
 import gc
 import sys
+import time
+from tfdeterminism import patch
 
 
 def str2bool(v):
@@ -80,29 +82,28 @@ if __name__ == '__main__':
     # parser.add_argument('--save_dir', required=True)
     # parser.add_argument('--desc', required=True)
     parser.add_argument('--dataset', default='DIGINETICA', type=str)
-    parser.add_argument('--save_dir', default='try', type=str) #ContinueLearning
+    parser.add_argument('--save_dir', default='try', type=str)  # ContinueLearning
     parser.add_argument('--desc', default='non_example', type=str)
     # continue learning parameter
     parser.add_argument('--use_exemplar', default=True, type=str2bool)
-    parser.add_argument('--exemplar_size', default=20000, type=int)
-    parser.add_argument('--random_select', default=False, type=str2bool)
-
+    parser.add_argument('--exemplar_size', default=5000, type=int)
+    parser.add_argument('--select_mode', default=1, type=int)
     parser.add_argument('--is_joint', default=False, type=str2bool)
     parser.add_argument('--remove_item', default=True, type=str2bool)
-
     # early stop parameter
     parser.add_argument('--stop_iter', default=20, type=int)
     parser.add_argument('--display_interval', default=1, type=int)
     # batch size and device
     parser.add_argument('--num_epochs', default=200, type=int)
-    parser.add_argument('--batch_size', default=256, type=int)
+    parser.add_argument('--batch_size', default=512, type=int)
     parser.add_argument('--test_batch', default=32, type=int)
-    parser.add_argument('--device_num', default=0, type=int)
+    parser.add_argument('--device_num', default=1, type=int)
     # hyper-parameters grid search
     parser.add_argument('--lr', default=0.0005, type=float)
     parser.add_argument('--num_blocks', default=2, type=int)
     parser.add_argument('--num_heads', default=1, type=int)
     # hyper-parameter fixed
+    parser.add_argument('--random_seed', default=555, type=int)
     parser.add_argument('--hidden_units', default=150, type=int)
     parser.add_argument('--maxlen', default=50, type=int)
     parser.add_argument('--dropout_rate', default=0.5, type=float)
@@ -118,13 +119,22 @@ if __name__ == '__main__':
     logs.write('Data set: %s Description: %s\nargs:' % (args.dataset, args.desc))
     logs.write(' '.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
 
+    # For reproducibility
+    os.environ['PYTHONHASHSEED'] = str(args.random_seed)
+    os.environ['TF_DETERMINISTIC_OPS'] = '1'
+    os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+    patch()
+    np.random.seed(args.random_seed)
+    random.seed(args.random_seed)
+    tf.set_random_seed(args.random_seed)
+
     # set configurations
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
-    config.gpu_options.per_process_gpu_memory_fraction = 0.3
+    # config.gpu_options.per_process_gpu_memory_fraction = 0.3
     # build model
-    item_num = 43023 if args.dataset == 'DIGINETICA' else 29086
+    item_num = 43023 if args.dataset == 'DIGINETICA' or args.dataset == 'DIGINETICA_week' else 29086
     with tf.device('/gpu:%d' % args.device_num):
         model = SASRec(item_num, args)
 
@@ -133,7 +143,9 @@ if __name__ == '__main__':
     dataloader = DataLoader(args, logs)
     plotter = ContinueLearningPlot(args)
     best_epoch = 0
+    t_start = time.time()
     for period in periods:
+        t = time.time()
         print('Period %d:' % period)
         logs.write('Period %d:\n' % period)
 
@@ -143,9 +155,9 @@ if __name__ == '__main__':
 
         # Load data
         train_sess = dataloader.train_loader(period)
-        train_item_counter = dataloader.get_item_counter(train_exemplar_data)
+        train_item_count = dataloader.get_item_counter(train_exemplar_data)
         valid_sess = dataloader.evaluate_loader(period, 'valid')
-        valid_item_counter = dataloader.get_item_counter(valid_exemplar_data)
+        valid_item_count = dataloader.get_item_counter(valid_exemplar_data)
         test_sess = dataloader.evaluate_loader(period, 'test')
         max_item = dataloader.max_item()
 
@@ -170,18 +182,16 @@ if __name__ == '__main__':
             # train
             for epoch in range(1, args.num_epochs + 1):
                 train_sampler = Sampler(args, train_sess, args.batch_size, True, max_item)
-                train_sampler.prepare_data(train_exemplar_data)
+                train_sampler.prepare_data_full_exemplar_seq_for_train_and_eval(train_exemplar_data)
                 batch_num = train_sampler.batch_num
                 # train each epoch
                 for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
                               desc='Training epoch %d/%d' % (epoch, args.num_epochs)):
                     seq, pos, neg = train_sampler.sampler()
-                    auc, loss, _, merged = sess.run([model.auc, model.loss, model.train_op, model.merged],
-                                                    {model.input_seq: seq,
-                                                     model.pos: pos,
-                                                     model.neg: neg,
-                                                     model.is_training: True})
-                writer.add_summary(merged, epoch)
+                    sess.run(model.train_op, {model.input_seq: seq,
+                                              model.pos: pos,
+                                              model.neg: neg,
+                                              model.is_training: True})
                 del train_sampler
 
                 # evaluate performance and early stop
@@ -213,37 +223,39 @@ if __name__ == '__main__':
 
             # test performance
             saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
+
             test_evaluator = Evaluator(args, test_sess, max_item, 'test', model, sess, logs)
             test_evaluator.evaluate(best_epoch)
             plotter.add_test(test_evaluator.results())
             del test_evaluator
 
             # save exemplars
-            if args.use_exemplar:
-                train_exemplar = ExemplarGenerator(args, args.exemplar_size, item_num, train_sess, 'train')
-                train_exemplar.sort_by_item(train_exemplar_data)
-                if args.random_select:
-                    train_exemplar.randomly_by_frequency(train_item_counter)
-                else:
-                    train_exemplar.herding_by_frequency(train_item_counter, sess, model)
-                train_exemplar.save(period)
-                del train_exemplar
+            if args.use_exemplar and not args.is_joint:
+                for data, exemplar_data, item_count, mode, size in \
+                        [[train_sess, train_exemplar_data, train_item_count, 'train', args.exemplar_size],
+                         [valid_sess, valid_exemplar_data, valid_item_count, 'valid',
+                          int(1 / 30 * args.exemplar_size)]]:
+                    exemplar = ExemplarGenerator(args, size, item_num, data, mode, logs)
+                    exemplar.prepare_data(exemplar_data)
+                    if args.select_mode == 0:
+                        exemplar.randomly_by_frequency(item_count)
+                    elif args.select_mode == 1:
+                        exemplar.herding_by_frequency(item_count, sess, model)
+                    elif args.select_mode == 2:
+                        exemplar.randomly_by_period()
+                    elif args.select_mode == 3:
+                        exemplar.herding_by_period(sess, model)
+                    else:
+                        raise ValueError('Not defined select mode.')
+                    exemplar.save(period)
+                    del exemplar
 
-                valid_exemplar = ExemplarGenerator(args, int(1/30 * args.exemplar_size), max_item, valid_sess, 'valid')
-                valid_exemplar.sort_by_item(valid_exemplar_data)
-                if args.random_select:
-                    valid_exemplar.randomly_by_frequency(valid_item_counter)
-                else:
-                    valid_exemplar.herding_by_frequency(valid_item_counter, sess, model)
-                valid_exemplar.save(period)
-                del valid_exemplar
+        print('Period %d time: %.2f minutes.' % (period, (time.time() - t) / 60.0))
+        logs.write('Period %d time: %.2f minutes\n' % (period, (time.time() - t) / 60.0))
 
     plotter.plot()
+    logs.write('Total time: %.2f minutes\n' % ((time.time() - t_start) / 60.0))
+    print('Total time: %.2f minutes.' % ((time.time() - t_start) / 60.0))
     logs.write('Done\n\n')
     logs.close()
     print('Done')
-
-
-
-
-

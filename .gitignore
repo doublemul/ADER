@@ -129,8 +129,8 @@ dmypy.json
 .pyre/
 
 # Record
-Record.md
-WorkLog.md
+temp/Record.md
+temp/WorkLog.md
 
 # pycharm
 .idea

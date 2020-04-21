@@ -143,7 +143,8 @@ def multihead_attention(queries,
                         causality=False,
                         scope="multihead_attention", 
                         reuse=None,
-                        with_qk=False):
+                        with_qk=False,
+                        seed=None):
     '''Applies multihead attention.
     
     Args:
@@ -212,7 +213,7 @@ def multihead_attention(queries,
         outputs *= query_masks # broadcasting. (N, T_q, C)
           
         # Dropouts
-        outputs = tf.layers.dropout(outputs, rate=dropout_rate, training=tf.convert_to_tensor(is_training))
+        outputs = tf.layers.dropout(outputs, rate=dropout_rate, training=tf.convert_to_tensor(is_training), seed=seed)
                
         # Weighted sum
         outputs = tf.matmul(outputs, V_) # ( h*N, T_q, C/h)
@@ -230,12 +231,13 @@ def multihead_attention(queries,
     else: return outputs
 
 
-def feedforward(inputs, 
+def feedforward(inputs,
                 num_units=[2048, 512],
                 scope="multihead_attention", 
                 dropout_rate=0.2,
                 is_training=True,
-                reuse=None):
+                reuse=None,
+                seed=None):
     '''Point-wise feed forward net.
     
     Args:
@@ -247,6 +249,7 @@ def feedforward(inputs,
         
     Returns:
       A 3d tensor with the same shape and dtype as inputs
+      :param seed: dropout seed
     '''
     with tf.variable_scope(scope, reuse=reuse):
         # Inner layer
@@ -258,7 +261,8 @@ def feedforward(inputs,
         params = {"inputs": outputs, "filters": num_units[1], "kernel_size": 1,
                   "activation": None, "use_bias": True}
         outputs = tf.layers.conv1d(**params)
-        outputs = tf.layers.dropout(outputs, rate=dropout_rate, training=tf.convert_to_tensor(is_training))
+        outputs = tf.layers.dropout(outputs, rate=dropout_rate, training=tf.convert_to_tensor(is_training),
+                                    seed=seed)
         
         # Residual connection
         outputs += inputs

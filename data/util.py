@@ -349,3 +349,76 @@ def get_last_time(periods):
     return list(last_time)
 
 
+def plot_new_old_label(time_fraction, sess_end, args):
+
+    for period in sorted(time_fraction.keys()):
+        time_fraction[period].sort(key=lambda x: sess_end[x[0]])
+    item_map = {}
+    for period in sorted(time_fraction.keys()):
+        for i, [userId, itemId, time] in enumerate(time_fraction[period]):
+            itemId = generate_name_Id_map(itemId, item_map)
+            time_fraction[period][i] = [userId, itemId, time]
+
+    # sort action according to time sequence and session
+    for period in sorted(time_fraction.keys()):
+        time_fraction[period].sort(key=lambda x: x[2])
+        time_fraction[period].sort(key=lambda x: x[0])
+
+    if args.test_fraction == 'day':
+        test_threshold = 86400
+    elif args.test_fraction == 'week':
+        test_threshold = 86400 * 7
+    elif args.test_fraction == 'month':
+        test_threshold = 86400 * 31
+    # get the last unix time of each period
+    last_time = get_last_time(list(sorted(time_fraction.keys())))
+
+    train = defaultdict(list)
+    valid = defaultdict(list)
+    test = defaultdict(list)
+    for i, period in enumerate(sorted(time_fraction.keys()), start=1):
+        for [userId, itemId, time] in time_fraction[period]:
+            if sess_end[userId] <= (last_time[i - 1] - test_threshold * 2):
+                train[period].append(itemId)
+            elif sess_end[userId] <= (last_time[i - 1] - test_threshold * 1):
+                valid[period].append(itemId)
+            elif sess_end[userId] > (last_time[i - 1] - test_threshold):
+                test[period].append(itemId)
+
+    old_label = []
+    new_label = []
+    prev_periods = []
+    for i, curr_period in enumerate(sorted(time_fraction.keys())):
+        if i >= 1:
+            curr_test_items = test[curr_period]
+            prev_test_items = []
+            for prev_period in prev_periods:
+                prev_test_items.extend(test[prev_period])
+            max_prev_test_items = max(prev_test_items)
+            new_counter = 0
+            old_counter = 0
+            for item in curr_test_items:
+                if item <= max_prev_test_items:
+                    old_counter += 1
+                else:
+                    new_counter += 1
+            old_label.append(old_counter)
+            new_label.append(new_counter)
+        prev_periods.append(curr_period)
+
+    plt.figure()
+    plt.title('Number of actions on new item vs old item in test set')
+    width = 0.3
+    plt.bar(np.arange(len(time_fraction.keys())-1), old_label, width, label='old item')
+    for x, y in zip(np.arange(len(time_fraction.keys())), old_label):
+        plt.text(x, y, '%d' % y, ha='center', va='center', rotation=90, size='x-small')
+    plt.bar(np.arange(len(time_fraction.keys())-1) + width, new_label, width, label='new item')
+    for x, y in zip(np.arange(len(time_fraction.keys())), new_label):
+        plt.text(x + width, y, '%d' % y, ha='center', va='center', rotation=90, size='x-small')
+    plt.ylabel('# actions')
+    plt.xticks(range(len(time_fraction.keys())-1), sorted(list(time_fraction.keys()))[1:])
+    plt.legend()
+    plt.savefig('sta_new_old_test.pdf')
+    plt.show()
+    plt.close()
+
