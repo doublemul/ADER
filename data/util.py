@@ -129,6 +129,7 @@ def read_dat(dataset_path):
                 sessId = generate_name_Id_map(sess, sess_map)
                 itemId = generate_name_Id_map(item, item_map)
                 reformed_data.append([sessId, itemId, time])
+
         else:
             print("Error: new dat data file!")
     return sess_map, item_map, reformed_data
@@ -172,12 +173,15 @@ def read_csv(dataset_path):
             converter = 86400.00 / max(timeframes)
             f.seek(0)
             reader = csv.DictReader(f, delimiter=';')
-            for sample in tqdm.tqdm(reader, desc='Reformatting data'):
+            for sample in tqdm.tqdm(reader, desc='Loading data'):
                 sess = sample['sessionId']
                 item = sample['itemId']
                 date = sample['eventdate']
                 timeframe = int(sample['timeframe'])
-                time = int(datetime.datetime.strptime(date, "%Y-%m-%d").timestamp()) + timeframe * converter
+                if date:
+                    time = int(datetime.datetime.strptime(date, "%Y-%m-%d").timestamp()) + timeframe * converter
+                else:
+                    continue
             ##############################
             # # without sequence information
             # reader = csv.DictReader(f, delimiter=';')
@@ -265,7 +269,7 @@ def plot_stat(time_fraction):
 
     plt.figure()
     plt.title('Session length histogram')
-    plt.hist(session_length, bins=29)
+    plt.hist(session_length, bins=30)
     plt.xlim((0, 30))
     plt.xticks(np.arange(30), rotation=30)
     plt.ylabel('# session')
