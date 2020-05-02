@@ -59,16 +59,9 @@ def short_remove(reformed_data, args):
     :return removed_data: result data after removing
     :return sess_end: a map recording session end time, a dictionary sess_end[sessId]=end_time
     """
-    # if args.yoochoose_select and not args.is_time_fraction and args.dataset == 'yoochoose-clicks.dat':
-    #     max_time = max(map(lambda x: x[2], reformed_data))
-    #     if args.test_fraction == 'day':
-    #         test_threshold = max_time - 86400
-    #     elif args.test_fraction == 'week':
-    #         test_threshold = max_time - 86400 * 7
-    #     valid_time = list(map(lambda x: x[2], reformed_data))
-    #     valid_time = list(filter(lambda x: x < test_threshold, valid_time))
-    #     threshold = np.percentile(valid_time, (1 - args.yoochoose_select) * 100)
-    #     reformed_data = list(filter(lambda x: x[2] > threshold, reformed_data))
+    org_sess_end = dict()
+    for [userId, _, time] in reformed_data:
+        org_sess_end = generate_sess_end_map(org_sess_end, userId, time)
 
     # remove session whose length is 1
     sess_counter = defaultdict(lambda: 0)
@@ -93,7 +86,27 @@ def short_remove(reformed_data, args):
     for [userId, _, time] in removed_data:
         sess_end = generate_sess_end_map(sess_end, userId, time)
 
+    if args.yoochoose_select and args.dataset == 'yoochoose-clicks.dat':
+        max_time = max(map(lambda x: x[2], removed_data))
+        if args.test_fraction == 'day':
+            test_threshold = 86400
+        elif args.test_fraction == 'week':
+            test_threshold = 86400 * 8
 
+        test_set = set()
+        for [userId, itemId, _] in removed_data:
+            if not sess_end[userId] < max_time - test_threshold:
+                test_set.add(itemId)
+
+        # train_session_times = list(sess_end.values())
+        train_session_times = []
+        for userId in sess_end.keys():
+            if sess_counter[userId] > 1:
+                for _ in range(sess_counter[userId]-1):
+                    train_session_times.append(sess_end[userId])
+        train_session_times = list(filter(lambda x: x < max_time-test_threshold, train_session_times))
+        threshold = np.percentile(train_session_times, (1 - args.yoochoose_select) * 100, interpolation='lower')
+        removed_data = list(filter(lambda x: sess_end[x[0]] >= threshold or x[1] in test_set, removed_data))
 
     # print information of removed data
     print('Number of sessions after pre-processing:', len(set(map(lambda x: x[0], removed_data))))
@@ -183,12 +196,17 @@ def generating_txt(time_fraction, sess_end, args):
         elif args.test_fraction == 'week':
             test_threshold = 86400 * 7
 
+        item_set = set()
         with open('test.txt', 'w') as file_test, open('train.txt', 'w') as file_train:
             for [userId, itemId, time] in time_fraction:
                 if sess_end[userId] < max_time - test_threshold:
+                # if sess_end[userId] < max_time - 86400 * 8:
                     file_train.write('%d %d\n' % (userId, itemId))
+                    item_set.add(itemId)
                 else:
+                # elif sess_end[userId] > max_time - 86400 * 7:
                     file_test.write('%d %d\n' % (userId, itemId))
+        print(len(item_set))
 
 
 if __name__ == '__main__':

@@ -7,10 +7,8 @@ class SASRec():
 
         self.is_training = tf.placeholder(tf.bool, shape=())
         self.input_seq = tf.placeholder(tf.int32, shape=(None, args.maxlen))
-        self.pos = tf.placeholder(tf.int32, shape=(None, args.maxlen))
-        self.neg = tf.placeholder(tf.int32, shape=(None, args.maxlen))
+        self.pos = tf.placeholder(tf.int32, shape=None)
         pos = self.pos
-        neg = self.neg
         mask = tf.expand_dims(tf.to_float(tf.not_equal(self.input_seq, 0)), -1)
 
         with tf.variable_scope("SASRec", reuse=reuse):
@@ -71,41 +69,26 @@ class SASRec():
             self.seq = normalize(self.seq)
 
         # find representation
-        self.rep_last = self.seq[:, -1, :]
+        self.rep = self.seq[:, -1, :]
 
-        pos = tf.reshape(pos, [tf.shape(self.input_seq)[0] * args.maxlen])
-        neg = tf.reshape(neg, [tf.shape(self.input_seq)[0] * args.maxlen])
-        pos_emb = tf.nn.embedding_lookup(item_emb_table, pos)
-        neg_emb = tf.nn.embedding_lookup(item_emb_table, neg)
-        seq_emb = tf.reshape(self.seq, [tf.shape(self.input_seq)[0] * args.maxlen, args.hidden_units])
 
-        # prediction layer
-        self.pos_logits = tf.reduce_sum(pos_emb * seq_emb, -1)
-        self.neg_logits = tf.reduce_sum(neg_emb * seq_emb, -1)
-        # ignore padding items (0)
-        istarget = tf.reshape(tf.to_float(tf.not_equal(pos, 0)), [tf.shape(self.input_seq)[0] * args.maxlen])
-        to_reduce_sum = - tf.log(tf.sigmoid(self.pos_logits) + 1e-24) * istarget \
-                        - tf.log(1 - tf.sigmoid(self.neg_logits) + 1e-24) * istarget
-        self.loss = tf.reduce_sum(to_reduce_sum) / tf.reduce_sum(istarget)
-        reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-        self.loss += sum(reg_losses)
-        self.t = self.loss
+        seq_emb = tf.reshape(self.rep, [tf.shape(self.input_seq)[0], args.hidden_units])
+        indices = pos - 1
+        labels = tf.one_hot(indices, max_item)
+        item_emb = tf.nn.embedding_lookup(item_emb_table, tf.range(1, max_item + 1))
+        logits = tf.matmul(seq_emb, tf.transpose(item_emb))
+        self.loss = tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits)
 
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=args.lr)
         self.train_op = self.optimizer.minimize(self.loss, global_step=self.global_step)
 
-        tf.summary.scalar('loss', self.loss)
-        self.merged = tf.summary.merge_all()
-
         # prediction
         self.test_item = tf.placeholder(tf.int32, shape=None)
         self.test_item_emb = tf.nn.embedding_lookup(item_emb_table, self.test_item)
         self.test_logits = tf.matmul(seq_emb, tf.transpose(self.test_item_emb))
-        self.test_logits = tf.reshape(self.test_logits,
-                                      [tf.shape(self.input_seq)[0], args.maxlen, tf.shape(self.test_item)[0]])
-        self.pred_last = self.test_logits[:, -1, :]
-        self.pred_last = tf.argsort(tf.argsort(-self.pred_last))
+        self.test_logits = tf.reshape(self.test_logits, [tf.shape(self.input_seq)[0], tf.shape(self.test_item)[0]])
+        self.pred_last = tf.argsort(tf.argsort(-self.test_logits))
 
     def predict(self, sess, seq, item_idx):
         return sess.run(self.pred_last,
