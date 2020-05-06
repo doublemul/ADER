@@ -8,6 +8,7 @@ class SASRec():
         self.is_training = tf.placeholder(tf.bool, shape=())
         self.input_seq = tf.placeholder(tf.int32, shape=(None, args.maxlen))
         self.pos = tf.placeholder(tf.int32, shape=None)
+        self.lr = tf.placeholder(tf.float32, shape=())
         pos = self.pos
         mask = tf.expand_dims(tf.to_float(tf.not_equal(self.input_seq, 0)), -1)
 
@@ -68,10 +69,10 @@ class SASRec():
 
             self.seq = normalize(self.seq)
 
+        # EWC loss
+
         # find representation
         self.rep = self.seq[:, -1, :]
-
-
         seq_emb = tf.reshape(self.rep, [tf.shape(self.input_seq)[0], args.hidden_units])
         indices = pos - 1
         labels = tf.one_hot(indices, max_item)
@@ -80,7 +81,7 @@ class SASRec():
         self.loss = tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits)
 
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=args.lr)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
         self.train_op = self.optimizer.minimize(self.loss, global_step=self.global_step)
 
         # prediction
@@ -90,6 +91,35 @@ class SASRec():
         self.test_logits = tf.reshape(self.test_logits, [tf.shape(self.input_seq)[0], tf.shape(self.test_item)[0]])
         self.pred_last = tf.argsort(tf.argsort(-self.test_logits))
 
+    # def compute_fisher(self, imgset, sess, num_samples=200, plot_diffs=False, disp_freq=10):
+    #     # computer Fisher information for each parameter
+    #
+    #     # initialize Fisher information for most recent task
+    #     self.F_accum = []
+    #     for v in range(len(self.var_list)):
+    #         self.F_accum.append(np.zeros(self.var_list[v].get_shape().as_list()))
+    #
+    #     # sampling a random class from softmax
+    #     probs = tf.nn.softmax(self.y)
+    #     class_ind = tf.to_int32(tf.multinomial(tf.log(probs), 1)[0][0])
+    #
+    #     for i in range(num_samples):
+    #         # select random input image
+    #         im_ind = np.random.randint(imgset.shape[0])
+    #         # compute first-order derivatives
+    #         ders = sess.run(tf.gradients(tf.log(probs[0, class_ind]), self.var_list),
+    #                         feed_dict={self.x: imgset[im_ind:im_ind + 1]})
+    #         # square the derivatives and add to total
+    #         for v in range(len(self.F_accum)):
+    #             self.F_accum[v] += np.square(ders[v])
+    #
+    #     # divide totals by number of samples
+    #     for v in range(len(self.F_accum)):
+    #         self.F_accum[v] /= num_samples
+
+
     def predict(self, sess, seq, item_idx):
         return sess.run(self.pred_last,
                         {self.input_seq: seq, self.test_item: item_idx, self.is_training: False})
+
+

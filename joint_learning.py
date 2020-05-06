@@ -123,7 +123,8 @@ if __name__ == '__main__':
                 seq, pos = train_sampler.sampler()
                 sess.run(model.train_op, {model.input_seq: seq,
                                           model.pos: pos,
-                                          model.is_training: True})
+                                          model.is_training: True,
+                                          model.lr: args.lr})
 
             # evaluate performance and early stop
             if epoch % args.display_interval == 0:

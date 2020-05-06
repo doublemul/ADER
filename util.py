@@ -77,7 +77,6 @@ class DataLoader:
         item_count = np.zeros(max_item)
         for item in self.item_counter.keys():
             item_count[item - 1] = self.item_counter[item]
-
         if exemplar:
             for sess in exemplar:
                 item_count[sess[-1] - 1] += 1
@@ -404,10 +403,6 @@ class ExemplarGenerator:
         item frequency.
         """
         self.exemplars = defaultdict(list)
-        item_prob = np.array(item_count)
-        item_prob = item_prob / item_prob.sum()
-        item_count = np.random.multinomial(n=self.m, pvals=item_prob, size=1)[0]
-        item_count = np.int32(item_count)
 
         for item in tqdm(self.sess_by_item, ncols=70, leave=False, unit='b', desc='Selecting exemplar'):
             m = item_count[item - 1]
@@ -418,11 +413,9 @@ class ExemplarGenerator:
             seq = np.array(seq)
             loss = sess.run(model.loss, {model.input_seq: seq[:, :-1], model.pos: seq[:, -1], model.is_training: False})
             loss = np.array(loss)
-            for _ in range(min(m, seq_num)):
-                selected_id = loss.argmin()
-                self.exemplars[item].append(seq[selected_id].tolist())
-                loss = np.delete(loss, selected_id)
-                seq = np.delete(seq, selected_id)
+            selected_ids = loss.argsort()[:min(m, seq_num)]
+            self.exemplars[item] = [seq[i].tolist() for i in selected_ids]
+
 
     def randomly_by_frequency(self, item_count):
         """
