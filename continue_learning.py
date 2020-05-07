@@ -74,18 +74,23 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='DIGINETICA', type=str)
-    parser.add_argument('--save_dir', default='try', type=str)
+    parser.add_argument('--save_dir', default='EWC', type=str)
     # continue learning parameter
     parser.add_argument('--use_exemplar', default=False, type=str2bool)
-    parser.add_argument('--exemplar_size', default=5000)
+    parser.add_argument('--exemplar_size', default=10000)
     parser.add_argument('--is_herding', default=0, type=int)  # 0 for herding; 1 for random; 2 for loss
+
+    # ewc parameter
+    parser.add_argument('--use_ewc', default=True, type=str2bool)
+    parser.add_argument('--ewc_lambda', default=5)
+
     # data parameter
     parser.add_argument('--is_joint', default=False, type=str2bool)
     parser.add_argument('--remove_item', default=True, type=str2bool)
     # early stop parameter
     parser.add_argument('--stop', default=5, type=int)
     # batch size and device
-    parser.add_argument('--num_epochs', default=200, type=int)
+    parser.add_argument('--num_epochs', default=6, type=int)
     parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--test_batch', default=32, type=int)
     parser.add_argument('--device_num', default=0, type=int)
@@ -142,14 +147,19 @@ if __name__ == '__main__':
         print('Period %d:' % period)
         logs.write('Period %d:\n' % period)
 
+        if args.use_ewc and period > periods[0]:
+            model.update_ewc_loss(ewc_lambda=args.ewc_lambda)
+        else:
+            model.set_vanilla_loss()
+
         # Load exemplar
         exemplar_data = load_exemplars(period, args.use_exemplar)
 
         # Load data
-        train_sess = []
-        for i in range(1, period + 1):
-            train_sess.extend(dataloader.train_loader(i))
-        # train_sess = dataloader.train_loader(period)
+        # train_sess = []
+        # for i in range(1, period + 1):
+        #     train_sess.extend(dataloader.train_loader(i))
+        train_sess = dataloader.train_loader(period)
         train_item_count = dataloader.get_item_counter(exemplar_data)
         if period < periods[-1]:
             test_sess = dataloader.evaluate_loader(period)
@@ -162,11 +172,11 @@ if __name__ == '__main__':
             saver = tf.train.Saver(max_to_keep=1)
 
             # initialize variables or reload from previous period
-            sess.run(tf.global_variables_initializer())
-            # if period <= 1:
-            #     sess.run(tf.global_variables_initializer())
-            # else:
-            #     saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
+            # sess.run(tf.global_variables_initializer())
+            if period <= 1:
+                sess.run(tf.global_variables_initializer())
+            else:
+                saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
 
             # train
             train_sampler = Sampler(args, train_sess, args.batch_size)
@@ -200,9 +210,17 @@ if __name__ == '__main__':
                     best_performance = performance
                     saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
 
+            saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
+            if args.use_ewc:
+                model.save_variable()
+
+                fisher_sampler = Sampler(args, [], 200)
+                fisher_sampler.prepare_data(valid_sess)
+                fisher_sample, _ = fisher_sampler.sampler()
+                model.compute_fisher(sess, fisher_sample, 20)
+
             # test performance
             if period < periods[-1]:
-                saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
                 test_evaluator = Evaluator(args, test_sess, max_item, 'test', model, sess, logs)
                 test_evaluator.evaluate(best_epoch)
 

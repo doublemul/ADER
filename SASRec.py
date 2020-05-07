@@ -1,5 +1,6 @@
 from modules import *
 import tensorflow.compat.v1 as tf
+import tqdm
 
 
 class SASRec():
@@ -9,6 +10,7 @@ class SASRec():
         self.input_seq = tf.placeholder(tf.int32, shape=(None, args.maxlen))
         self.pos = tf.placeholder(tf.int32, shape=None)
         self.lr = tf.placeholder(tf.float32, shape=())
+
         pos = self.pos
         mask = tf.expand_dims(tf.to_float(tf.not_equal(self.input_seq, 0)), -1)
 
@@ -69,20 +71,24 @@ class SASRec():
 
             self.seq = normalize(self.seq)
 
-        # EWC loss
-
         # find representation
         self.rep = self.seq[:, -1, :]
+
+        self.variables = tf.get_collection(tf.GraphKeys.VARIABLES)
+        # self.variables[1:-1] = self.variables[2:]
+        del self.variables[1]
+
+        # define loss
         seq_emb = tf.reshape(self.rep, [tf.shape(self.input_seq)[0], args.hidden_units])
         indices = pos - 1
         labels = tf.one_hot(indices, max_item)
         item_emb = tf.nn.embedding_lookup(item_emb_table, tf.range(1, max_item + 1))
-        logits = tf.matmul(seq_emb, tf.transpose(item_emb))
-        self.loss = tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits)
+        self.logits = tf.matmul(seq_emb, tf.transpose(item_emb))
+        self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=self.logits))
 
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
-        self.train_op = self.optimizer.minimize(self.loss, global_step=self.global_step)
+
 
         # prediction
         self.test_item = tf.placeholder(tf.int32, shape=None)
@@ -91,35 +97,50 @@ class SASRec():
         self.test_logits = tf.reshape(self.test_logits, [tf.shape(self.input_seq)[0], tf.shape(self.test_item)[0]])
         self.pred_last = tf.argsort(tf.argsort(-self.test_logits))
 
-    # def compute_fisher(self, imgset, sess, num_samples=200, plot_diffs=False, disp_freq=10):
-    #     # computer Fisher information for each parameter
-    #
-    #     # initialize Fisher information for most recent task
-    #     self.F_accum = []
-    #     for v in range(len(self.var_list)):
-    #         self.F_accum.append(np.zeros(self.var_list[v].get_shape().as_list()))
-    #
-    #     # sampling a random class from softmax
-    #     probs = tf.nn.softmax(self.y)
-    #     class_ind = tf.to_int32(tf.multinomial(tf.log(probs), 1)[0][0])
-    #
-    #     for i in range(num_samples):
-    #         # select random input image
-    #         im_ind = np.random.randint(imgset.shape[0])
-    #         # compute first-order derivatives
-    #         ders = sess.run(tf.gradients(tf.log(probs[0, class_ind]), self.var_list),
-    #                         feed_dict={self.x: imgset[im_ind:im_ind + 1]})
-    #         # square the derivatives and add to total
-    #         for v in range(len(self.F_accum)):
-    #             self.F_accum[v] += np.square(ders[v])
-    #
-    #     # divide totals by number of samples
-    #     for v in range(len(self.F_accum)):
-    #         self.F_accum[v] /= num_samples
+    def set_vanilla_loss(self):
+        self.train_op = self.optimizer.minimize(self.loss, global_step=self.global_step)
 
+    def update_ewc_loss(self, ewc_lambda):
+        self.ewc_loss = self.loss
+        print(self.F_accum)
+        for v in range(len(self.variables)):
+            self.ewc_loss += (ewc_lambda / 2) * \
+                             tf.reduce_sum(tf.multiply(self.F_accum[v].astype(np.float32),
+                                                       tf.square(self.variables[v] - self.variables_prev[v])))
+        self.train_op = self.optimizer.minimize(self.ewc_loss, global_step=self.global_step)
+
+    def compute_fisher(self, sess, data, num_samples=10):
+        # computer Fisher information for each parameter
+
+        # initialize Fisher information for most recent task
+        self.F_accum = []
+        for v in range(len(self.variables)):
+            self.F_accum.append(np.zeros(self.variables[v].get_shape().as_list()))
+
+        # sampling a random class from softmax
+        probs = tf.nn.softmax(self.logits)
+        class_ind = tf.to_int32(tf.multinomial(tf.log(probs), 1)[0][0])
+
+        # select random input session
+        for _ in tqdm.tqdm(range(num_samples), desc='Computing fisher', leave=False, ncols=70):
+            im_ind = np.random.randint(len(data))
+
+            # compute first-order derivatives
+            input_seq = data[im_ind].reshape((1, -1))
+            ders = sess.run(tf.gradients(tf.log(probs[0, class_ind]), self.variables),
+                            feed_dict={self.input_seq: data, self.is_training: False})
+            # square the derivatives and add to total
+            for v in range(len(self.F_accum)):
+                self.F_accum[v] += np.square(ders[v])
+
+        # divide totals by number of samples
+        for v in range(len(self.F_accum)):
+            self.F_accum[v] /= num_samples
+        print(self.F_accum)
+
+    def save_variable(self):
+        self.variables_prev = self.variables
 
     def predict(self, sess, seq, item_idx):
         return sess.run(self.pred_last,
                         {self.input_seq: seq, self.test_item: item_idx, self.is_training: False})
-
-
