@@ -35,6 +35,7 @@ def get_periods(args, logs):
     logs.write('\nContinue Learning: Number of periods is %d.\n' % period_num)
     periods = range(1, period_num + 1)
     return periods
+    # return [1,2,3,4,5,6,7,8]
 
 
 if __name__ == '__main__':
@@ -43,6 +44,8 @@ if __name__ == '__main__':
     tf.disable_v2_behavior()
     tf.logging.set_verbosity(tf.logging.ERROR)
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='DIGINETICA', type=str)
@@ -51,7 +54,7 @@ if __name__ == '__main__':
     parser.add_argument('--is_joint', default=False, type=str2bool)
     # batch size and device
     parser.add_argument('--test_batch', default=32, type=int)
-    parser.add_argument('--device_num', default=0, type=int)
+    parser.add_argument('--device_num', default=1, type=int)
     # hyper-parameters grid search
     parser.add_argument('--lr', default=0.0005, type=float)
     parser.add_argument('--num_blocks', default=2, type=int)
@@ -65,11 +68,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # set configurations
+
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
     # build model
-    item_num = 43136 if args.dataset == 'DIGINETICA' else 27333
+    item_num = 27333 if args.dataset == 'YOOCHOOSE' else 43136
     with tf.device('/gpu:%d' % args.device_num):
         model = SASRec(item_num, args)
 
@@ -79,12 +83,12 @@ if __name__ == '__main__':
     next_session_recall10_plt = dict()
     next_session_mrr20_plt = dict()
     next_session_mrr10_plt = dict()
-    overall_recall20_plt = dict()
-    overall_recall10_plt = dict()
-    overall_mrr20_plt = dict()
-    overall_mrr10_plt = dict()
+    # overall_recall20_plt = dict()
+    # overall_recall10_plt = dict()
+    # overall_mrr20_plt = dict()
+    # overall_mrr10_plt = dict()
 
-    for args.save_dir in ['NoExemplar', 'Herding-5k', 'Herding-10k', 'Random-5k', 'Random-10k', 'Loss-5k', 'Loss-10k', 'Upper-bound']:
+    for args.save_dir in ['NoExe', 'Loss5k', 'NewMethod5k-oldExample', 'Upper-bound']:
 
         # set path
         if not os.path.isdir(os.path.join('results', args.dataset + '_' + args.save_dir)):
@@ -99,10 +103,10 @@ if __name__ == '__main__':
                 next_session_recall10 = results[1]
                 next_session_mrr20 = results[2]
                 next_session_mrr10 = results[3]
-                overall_recall20 = results[4]
-                overall_recall10 = results[5]
-                overall_mrr20 = results[6]
-                overall_mrr10 = results[7]
+                # overall_recall20 = results[4]
+                # overall_recall10 = results[5]
+                # overall_mrr20 = results[6]
+                # overall_mrr10 = results[7]
         else:
             logs = open('test.txt', mode='w')
             # Loop each period for continue learning #
@@ -114,12 +118,12 @@ if __name__ == '__main__':
             next_session_recall10 = []
             next_session_mrr20 = []
             next_session_mrr10 = []
-            overall_recall20 = []
-            overall_recall10 = []
-            overall_mrr20 = []
-            overall_mrr10 = []
+            # overall_recall20 = []
+            # overall_recall10 = []
+            # overall_mrr20 = []
+            # overall_mrr10 = []
 
-            for period in periods:
+            for period in periods[:-1]:
                 print('Period %d:' % period)
                 logs.write('Period %d:\n' % period)
 
@@ -141,37 +145,37 @@ if __name__ == '__main__':
                     saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
 
                     # test performance
-                    if period < periods[-1]:
-                        print('Next period %d performance:')
-                        test_evaluator = Evaluator(args, next_sess, max_item, 'test', model, sess, logs)
-                        test_evaluator.evaluate(epoch)
-                        results = test_evaluator.results()
-                        next_session_mrr20.append(results[0])
-                        next_session_recall20.append(results[1])
-                        next_session_mrr10.append(results[2])
-                        next_session_recall10.append(results[3])
+                    print('Next period performance:')
+                    test_evaluator = Evaluator(args, next_sess, max_item, 'test', model, sess, logs)
+                    test_evaluator.evaluate(epoch)
+                    results = test_evaluator.results()
+                    next_session_mrr20.append(results[0])
+                    next_session_recall20.append(results[1])
+                    next_session_mrr10.append(results[2])
+                    next_session_recall10.append(results[3])
 
-                    else:
-                        print('Overall performance:')
-                        for p in sorted(train_sess.keys()):
-                            overall_evaluator = Evaluator(args, train_sess[p], max_item, 'test', model, sess, logs)
-                            overall_evaluator.evaluate(epoch)
-                            results = overall_evaluator.results()
-                            del overall_evaluator
-                            overall_mrr20.append(results[0])
-                            overall_recall20.append(results[1])
-                            overall_mrr10.append(results[2])
-                            overall_recall10.append(results[3])
+                    # else:
+                    #     print('Overall performance:')
+                    #     for p in sorted(train_sess.keys()):
+                    #         overall_evaluator = Evaluator(args, train_sess[p], max_item, 'test', model, sess, logs)
+                    #         overall_evaluator.evaluate(epoch)
+                    #         results = overall_evaluator.results()
+                    #         del overall_evaluator
+                    #         overall_mrr20.append(results[0])
+                    #         overall_recall20.append(results[1])
+                    #         overall_mrr10.append(results[2])
+                    #         overall_recall10.append(results[3])
 
             with open('results.pickle', mode='wb') as file:
                 results = pickle.dump([next_session_recall20,
                                        next_session_recall10,
                                        next_session_mrr20,
-                                       next_session_mrr10,
-                                       overall_recall20,
-                                       overall_recall10,
-                                       overall_mrr20,
-                                       overall_mrr10], file)
+                                       next_session_mrr10],
+                                       # overall_recall20,
+                                       # overall_recall10,
+                                       # overall_mrr20,
+                                       # overall_mrr10],
+                                      file)
             logs.write('Done\n')
             logs.close()
 
@@ -185,14 +189,14 @@ if __name__ == '__main__':
         next_session_mrr10_plt[args.save_dir] = np.array(next_session_mrr10) * 100
         overall_logs.write('mean next session mrr@10: %.2f%%.\n' % (np.array(next_session_mrr10) * 100).mean())
 
-        overall_recall20_plt[args.save_dir] = np.array(overall_recall20) * 100
-        overall_logs.write('mean overall recall@20: %.2f%%.\n' % (np.array(overall_recall20) * 100).mean())
-        overall_recall10_plt[args.save_dir] = np.array(overall_recall10) * 100
-        overall_logs.write('mean overall recall@10: %.2f%%.\n' % (np.array(overall_recall10) * 100).mean())
-        overall_mrr20_plt[args.save_dir] = np.array(overall_mrr20) * 100
-        overall_logs.write('mean overall mrr@20: %.2f%%.\n' % (np.array(overall_mrr20) * 100).mean())
-        overall_mrr10_plt[args.save_dir] = np.array(overall_mrr10) * 100
-        overall_logs.write('mean overall mrr@10: %.2f%%.\n' % (np.array(overall_mrr10) * 100).mean())
+        # overall_recall20_plt[args.save_dir] = np.array(overall_recall20) * 100
+        # overall_logs.write('mean overall recall@20: %.2f%%.\n' % (np.array(overall_recall20) * 100).mean())
+        # overall_recall10_plt[args.save_dir] = np.array(overall_recall10) * 100
+        # overall_logs.write('mean overall recall@10: %.2f%%.\n' % (np.array(overall_recall10) * 100).mean())
+        # overall_mrr20_plt[args.save_dir] = np.array(overall_mrr20) * 100
+        # overall_logs.write('mean overall mrr@20: %.2f%%.\n' % (np.array(overall_mrr20) * 100).mean())
+        # overall_mrr10_plt[args.save_dir] = np.array(overall_mrr10) * 100
+        # overall_logs.write('mean overall mrr@10: %.2f%%.\n' % (np.array(overall_mrr10) * 100).mean())
 
         os.chdir(main_dir)
 
@@ -200,43 +204,49 @@ if __name__ == '__main__':
     num_bar = len(next_session_mrr10_plt.keys()) / 2
     bars = []
     lines = []
-    fig, axs = plt.subplots(4, 2, sharex='col', figsize=[6.4 * 1.5 * 1.5, 4.8 * 1.5])
-    axs[0, 0].set_title('next period performance')
-    axs[0, 1].set_title('overall performance on final model')
+    fig, axs = plt.subplots(4, 1, sharex='col', figsize=[6.4, 4.8 * 2])
+    axs[0].set_title('next period performance')
+    # axs[0, 1].set_title('overall performance on final model')
     for s, save_dir in enumerate(next_session_mrr10_plt.keys()):
 
         next_session_recall20 = next_session_recall20_plt[save_dir]
-        overall_recall20 = overall_recall20_plt[save_dir]
+        # overall_recall20 = overall_recall20_plt[save_dir]
 
         next_session_recall10 = next_session_recall10_plt[save_dir]
-        overall_recall10 = overall_recall10_plt[save_dir]
+        # overall_recall10 = overall_recall10_plt[save_dir]
 
         next_session_mrr20 = next_session_mrr20_plt[save_dir]
-        overall_mrr20 = overall_mrr20_plt[save_dir]
+        # overall_mrr20 = overall_mrr20_plt[save_dir]
 
         next_session_mrr10 = next_session_mrr10_plt[save_dir]
-        overall_mrr10 = overall_mrr10_plt[save_dir]
+        # overall_mrr10 = overall_mrr10_plt[save_dir]
 
-        for i, data in enumerate([[next_session_recall20, overall_recall20],
-                                  [next_session_recall10, overall_recall10],
-                                  [next_session_mrr20, overall_mrr20],
-                                  [next_session_mrr10, overall_mrr10]]):
+        for i, data in enumerate([next_session_recall20,
+                                  next_session_recall10,
+                                  next_session_mrr20,
+                                  next_session_mrr10]):
 
-            line, = axs[i, 0].plot(np.arange(1, len(data[0]) + 1), data[0], label=save_dir)
-            lines.append(line)
-            bar = axs[i, 1].bar(np.arange(1, len(data[1]) + 1) + width * (s - num_bar + 0.5), data[1],
-                                width=width, label=save_dir)
-            if i == 0:
-                bars.append(bar)
+            line, = axs[i].plot(np.arange(1, len(data) + 1), data, label=save_dir)
+            if i == 3:
+                lines.append(line)
+            # bar = axs[i, 1].bar(np.arange(1, len(data[1]) + 1) + width * (s - num_bar + 0.5), data[1],
+            #                     width=width, label=save_dir)
+            # if i == 0:
+            #     bars.append(bar)
 
-    axs[0, 0].set_ylabel('Recall@20(%)')
-    axs[1, 0].set_ylabel('Recall@10(%)')
-    axs[2, 0].set_ylabel('MRR@20(%)')
-    axs[3, 0].set_ylabel('MRR@10(%)')
-    axs[0, 0].set_xticks(np.arange(1, len(data[0]) + 1))
-    axs[0, 1].set_xticks(np.arange(1, len(data[1]) + 1))
+    axs[0].set_ylabel('Recall@20(%)')
+    axs[1].set_ylabel('Recall@10(%)')
+    axs[2].set_ylabel('MRR@20(%)')
+    axs[3].set_ylabel('MRR@10(%)')
+    axs[0].set_xticks(np.arange(1, len(data) + 1))
+    for ax in axs:
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
+    # axs[0, 1].set_xticks(np.arange(1, len(data[1]) + 1))
     fig.tight_layout()
-    fig.legend(handles=bars, loc='upper center', bbox_to_anchor=(0.5, 0.04), fancybox=False, ncol=10)
+    axs[3].legend(handles=lines, loc='upper center', bbox_to_anchor=(0.5, -0.1), fancybox=True, shadow=True, ncol=3)
+
+    # fig.legend(handles=lines, loc='upper center', bbox_to_anchor=(0.5, 0.04), fancybox=False, ncol=3)
     plt.savefig('results.pdf', bbox_inches='tight')
     plt.show()
     overall_logs.close()

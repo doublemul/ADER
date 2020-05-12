@@ -94,6 +94,7 @@ if __name__ == '__main__':
         item_num = 30470
     with tf.device('/gpu:%d' % args.device_num):
         model = SASRec(item_num, args)
+        model.set_vanilla_loss()
 
     # Load data
     dataloader = DataLoader(args, logs)

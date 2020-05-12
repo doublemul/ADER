@@ -184,7 +184,7 @@ class Sampler:
                 break
         return seq, pos
 
-    def prepare_data(self, exemplar=None, valid_portion=None):
+    def prepare_data(self):
         self.prepared_data = []
         for session in self.data:
             self.prepared_data.append(session)
@@ -193,28 +193,33 @@ class Sampler:
                 for t in range(1, length - 1):
                     self.prepared_data.append(session[:-t])
 
+    def add_exemplar(self, exemplar):
         if exemplar:
             for session in exemplar:
                 self.prepared_data.append(session)
 
-        if valid_portion:
-            data_size = len(self.prepared_data)
-            sidx = np.arange(data_size, dtype='int32')
-            np.random.shuffle(sidx)
-            n_train = int(np.round(data_size * (1. - valid_portion)))
-            valid_data = [self.prepared_data[s] for s in sidx[n_train:]]
-            train_data = [self.prepared_data[s] for s in sidx[:n_train]]
-            self.prepared_data = train_data
+    def split_data(self, valid_portion, return_train=False):
+
+        data_size = len(self.prepared_data)
+        sidx = np.arange(data_size, dtype='int32')
+        np.random.shuffle(sidx)
+        n_train = int(np.round(data_size * (1. - valid_portion)))
+        valid_data = [self.prepared_data[s] for s in sidx[n_train:]]
+        train_data = [self.prepared_data[s] for s in sidx[:n_train]]
+        self.prepared_data = train_data
+
+        if return_train:
+            return valid_data, train_data
+        else:
+            return valid_data
+
+    def shuffle_data(self):
 
         self.dataset_size = len(self.prepared_data)
         self.batch_num = math.ceil(self.dataset_size * 1.0 / self.batch_size)
-
         self.batch_counter = 0
         self.data_indices = list(range(self.dataset_size))
         random.Random(self.SEED).shuffle(self.data_indices)
-
-        if valid_portion:
-            return valid_data
 
     def sampler(self):
         """
@@ -275,7 +280,9 @@ class Evaluator:
         self.ranks = []
 
         evaluate_sampler = Sampler(self.args, self.data, self.args.test_batch)
-        evaluate_sampler.prepare_data(exemplar)
+        evaluate_sampler.prepare_data()
+        evaluate_sampler.add_exemplar(exemplar=exemplar)
+        evaluate_sampler.shuffle_data()
         batch_num = evaluate_sampler.batch_num
         for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
                       desc=self.desc + str(epoch)):
@@ -335,7 +342,9 @@ class ExemplarGenerator:
         """
         self.sess_by_item = defaultdict(list)
         exemplar_sampler = Sampler(self.args, self.data, self.args.batch_size)
-        exemplar_sampler.prepare_data(exemplar)
+        exemplar_sampler.prepare_data()
+        exemplar_sampler.add_exemplar(exemplar=exemplar)
+        exemplar_sampler.shuffle_data()
         batch_num = exemplar_sampler.batch_num
         for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
                       desc='Sorting exemplars'):
@@ -413,7 +422,7 @@ class ExemplarGenerator:
             seq = np.array(seq)
             loss = sess.run(model.loss, {model.input_seq: seq[:, :-1], model.pos: seq[:, -1], model.is_training: False})
             loss = np.array(loss)
-            selected_ids = loss.argsort()[:min(m, seq_num)]
+            selected_ids = loss.argsort()[:int(min(m, seq_num))]
             self.exemplars[item] = [seq[i].tolist() for i in selected_ids]
 
 

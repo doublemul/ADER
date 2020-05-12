@@ -136,7 +136,7 @@ def time_partition(removed_data, session_end, args):
         period_threshold = np.arange(max_time, min_time, -7 * 86400)
         period_threshold = np.sort(period_threshold)
         if args.dataset.split('.')[0] == 'train-item-views':
-            period_threshold = period_threshold[4:]
+            period_threshold = period_threshold[-10:]
 
         for [sessId, itemId, time] in removed_data:
             # find period of each action
@@ -165,7 +165,7 @@ def generating_txt(time_fraction, sess_end, args):
         # item map second time
         item_map = {}
         for period in sorted(time_fraction.keys()):
-            time_fraction[period].sort(key=lambda x: x[2])
+            time_fraction[period].sort(key=lambda x: sess_end[x[0]])
         for period in sorted(time_fraction.keys()):
             for i, [userId, itemId, time] in enumerate(time_fraction[period]):
                 itemId = generate_name_Id_map(itemId, item_map)
@@ -213,7 +213,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='train-item-views.csv', type=str)
-    parser.add_argument('--is_time_fraction', default=False, type=str2bool)
+    parser.add_argument('--is_time_fraction', default=True, type=str2bool)
     parser.add_argument('--test_fraction', default='week', type=str)
     parser.add_argument('--threshold_sess', default=1, type=int)
     parser.add_argument('--threshold_item', default=4, type=int)
@@ -234,7 +234,7 @@ if __name__ == '__main__':
     if args.dataset.split('.')[0] == 'yoochoose-clicks':
         dataset_name = 'YOOCHOOSE'
     elif args.dataset.split('.')[0] == 'train-item-views':
-        dataset_name = 'DIGINETICA'
+        dataset_name = 'DIGINETICA-10'
     if args.is_time_fraction:
         dataset_name = dataset_name
     else:
