@@ -91,22 +91,22 @@ def short_remove(reformed_data, args):
         if args.test_fraction == 'day':
             test_threshold = 86400
         elif args.test_fraction == 'week':
-            test_threshold = 86400 * 8
+            test_threshold = 86400 * 7
 
-        test_set = set()
-        for [userId, itemId, _] in removed_data:
-            if not sess_end[userId] < max_time - test_threshold:
-                test_set.add(itemId)
+        # test_set = set()
+        # for [userId, itemId, _] in removed_data:
+        #     if not sess_end[userId] < max_time - test_threshold:
+        #         test_set.add(itemId)
 
         # train_session_times = list(sess_end.values())
         train_session_times = []
         for userId in sess_end.keys():
-            if sess_counter[userId] > 1:
+            if sess_counter[userId] > 1 and sess_end[userId] <= max_time - test_threshold:
                 for _ in range(sess_counter[userId]-1):
                     train_session_times.append(sess_end[userId])
-        train_session_times = list(filter(lambda x: x < max_time-test_threshold, train_session_times))
-        threshold = np.percentile(train_session_times, (1 - args.yoochoose_select) * 100, interpolation='lower')
-        removed_data = list(filter(lambda x: sess_end[x[0]] >= threshold or x[1] in test_set, removed_data))
+        threshold = np.percentile(train_session_times, (1.0 - args.yoochoose_select) * 100.0, interpolation='lower')
+        # removed_data = list(filter(lambda x: sess_end[x[0]] >= threshold or x[1] in test_set, removed_data))
+        removed_data = list(filter(lambda x: sess_end[x[0]] >= threshold, removed_data))
 
     # print information of removed data
     print('Number of sessions after pre-processing:', len(set(map(lambda x: x[0], removed_data))))
@@ -133,10 +133,14 @@ def time_partition(removed_data, session_end, args):
         all_times = np.array(list(session_end.values()))
         max_time = max(all_times)
         min_time = min(all_times)
-        period_threshold = np.arange(max_time, min_time, -7 * 86400)
+        if args.test_fraction == 'week':
+            period_threshold = np.arange(max_time, min_time, -7 * 86400)
+        elif args.test_fraction == 'day':
+            period_threshold = np.arange(max_time, min_time, -86400)
+        else:
+            raise ValueError('invalid time fraction')
         period_threshold = np.sort(period_threshold)
-        if args.dataset.split('.')[0] == 'train-item-views':
-            period_threshold = period_threshold[-10:]
+        period_threshold = period_threshold[-17:]
 
         for [sessId, itemId, time] in removed_data:
             # find period of each action
@@ -217,7 +221,7 @@ if __name__ == '__main__':
     parser.add_argument('--test_fraction', default='week', type=str)
     parser.add_argument('--threshold_sess', default=1, type=int)
     parser.add_argument('--threshold_item', default=4, type=int)
-    parser.add_argument('--yoochoose_select', default=0.25, type=float)
+    parser.add_argument('--yoochoose_select', default=0.10, type=float)
     args = parser.parse_args()
     # args.dataset = 'yoochoose-clicks.dat'
     print('Start preprocess ' + args.dataset + ':')
@@ -230,11 +234,12 @@ if __name__ == '__main__':
     os.chdir('dataset')
     sess_map, item_map, reformed_data = read_data(args.dataset)
 
+
     # create dictionary for processed data
     if args.dataset.split('.')[0] == 'yoochoose-clicks':
         dataset_name = 'YOOCHOOSE'
     elif args.dataset.split('.')[0] == 'train-item-views':
-        dataset_name = 'DIGINETICA-10'
+        dataset_name = 'DIGINETICA-N'
     if args.is_time_fraction:
         dataset_name = dataset_name
     else:

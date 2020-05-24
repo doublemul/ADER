@@ -35,7 +35,7 @@ def get_periods(args, logs):
     logs.write('\nContinue Learning: Number of periods is %d.\n' % period_num)
     periods = range(1, period_num + 1)
     return periods
-    # return [1,2,3,4,5,6,7,8]
+    # return [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 
 if __name__ == '__main__':
@@ -45,7 +45,6 @@ if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.ERROR)
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
     os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='DIGINETICA', type=str)
@@ -62,7 +61,7 @@ if __name__ == '__main__':
     # hyper-parameter fixed
     parser.add_argument('--hidden_units', default=150, type=int)
     parser.add_argument('--maxlen', default=50, type=int)
-    parser.add_argument('--dropout_rate', default=0.5, type=float)
+    parser.add_argument('--dropout_rate', default=0.3, type=float)
     parser.add_argument('--l2_emb', default=0.0, type=float)
     parser.add_argument('--random_seed', default=555, type=int)
     args = parser.parse_args()
@@ -88,11 +87,45 @@ if __name__ == '__main__':
     # overall_mrr20_plt = dict()
     # overall_mrr10_plt = dict()
 
-    for args.save_dir in ['NoExe', 'Loss5k', 'NewMethod5k-oldExample', 'Upper-bound']:
-
+    for args.save_dir in [
+        'NoExemplar-Dropout0.3',
+        # 'Herding0.05-Dropout0-',
+        # 'NoExemplar-Dropout0.1',
+        # 'NoExemplar-Dropout0.2',
+        # 'Herding1k-Dropout0',
+        # 'Herding0.1-Dropout3',
+        # 'NoExemplar-Dropout0.3',
+        # 'Herding0.05D0.3',
+        # 'Herding5k-Dropout3',
+        # 'NoExemplar-Dropout0.4',
+        # 'NoExemplar-Dropout0.5',
+        # 'NoExemplar-Dropout0.6',
+        # 'NoExemplar-Dropout0.7',
+        # 'RandomExemplar0.03Dropout0',
+        # 'RandomExemplar0.05Dropout0',
+        # 'RandomExemplar0.07Dropout0',
+        # 'RandomExemplar0.09Dropout0',
+        # 'RandomExemplar0.03Dropout3',
+        # 'RandomExemplar0.05Dropout5',
+        'Herding30k-Night',
+        'Herding20k-Night',
+        'Herding10k-Night',
+        # 'Herding2k',
+        # 'HerdingExemplar0.07Dropout0',
+        # 'HerdingExemplar0.09Dropout0',
+        # 'HerdingExemplar-Size20000Dropout3',
+        # 'HerdingExemplar-Size20000Dropout5',
+        # 'LossExemplar0.03Dropout0',
+        # 'LossExemplar0.05Dropout0',
+        # 'LossExemplar0.07Dropout0',
+        # 'LossExemplar0.09Dropout0',
+        # 'LossExemplar-Size20000Dropout3',
+        # 'LossExemplar-Size20000Dropout5',
+    ]:
+        print(args.save_dir)
         # set path
-        if not os.path.isdir(os.path.join('results', args.dataset + '_' + args.save_dir)):
-            raise ValueError('Wrong save_dir !')
+        # if not os.path.isdir(os.path.join('results', args.dataset + '_' + args.save_dir)):
+        #     raise ValueError('Wrong save_dir !')
         os.chdir(os.path.join('results', args.dataset + '_' + args.save_dir))
         # record logs
 
@@ -111,7 +144,7 @@ if __name__ == '__main__':
             logs = open('test.txt', mode='w')
             # Loop each period for continue learning #
             periods = get_periods(args, logs)
-            data_loader = DataLoader(args, logs)
+            data_loader = DataLoader(args, item_num, logs)
             train_sess = dict()
             test_sess = dict()
             next_session_recall20 = []
@@ -130,7 +163,7 @@ if __name__ == '__main__':
                 # Load data
                 train_sess[period] = data_loader.train_loader(period)
                 if period < periods[-1]:
-                    next_sess = data_loader.evaluate_loader(period)
+                    next_sess, _ = data_loader.evaluate_loader(period)
                 max_item = data_loader.max_item()
 
                 # Start of the main algorithm
@@ -171,23 +204,23 @@ if __name__ == '__main__':
                                        next_session_recall10,
                                        next_session_mrr20,
                                        next_session_mrr10],
-                                       # overall_recall20,
-                                       # overall_recall10,
-                                       # overall_mrr20,
-                                       # overall_mrr10],
+                                      # overall_recall20,
+                                      # overall_recall10,
+                                      # overall_mrr20,
+                                      # overall_mrr10],
                                       file)
             logs.write('Done\n')
             logs.close()
 
         overall_logs.write('%s:\n' % args.save_dir)
         next_session_recall20_plt[args.save_dir] = np.array(next_session_recall20) * 100
-        overall_logs.write('mean next session recall@20: %.2f%%.\n' % (np.array(next_session_recall20) * 100).mean())
-        next_session_recall10_plt[args.save_dir] = np.array(next_session_recall10) * 100
-        overall_logs.write('mean next session recall@10: %.2f%%.\n' % (np.array(next_session_recall10) * 100).mean())
+        overall_logs.write('mean next session recall@20: %.2f%%\n' % (np.array(next_session_recall20) * 100).mean())
         next_session_mrr20_plt[args.save_dir] = np.array(next_session_mrr20) * 100
-        overall_logs.write('mean next session mrr@20: %.2f%%.\n' % (np.array(next_session_mrr20) * 100).mean())
+        overall_logs.write('mean next session mrr@20: %.2f%%\n' % (np.array(next_session_mrr20) * 100).mean())
+        next_session_recall10_plt[args.save_dir] = np.array(next_session_recall10) * 100
+        overall_logs.write('mean next session recall@10: %.2f%%\n' % (np.array(next_session_recall10) * 100).mean())
         next_session_mrr10_plt[args.save_dir] = np.array(next_session_mrr10) * 100
-        overall_logs.write('mean next session mrr@10: %.2f%%.\n' % (np.array(next_session_mrr10) * 100).mean())
+        overall_logs.write('mean next session mrr@10: %.2f%%\n' % (np.array(next_session_mrr10) * 100).mean())
 
         # overall_recall20_plt[args.save_dir] = np.array(overall_recall20) * 100
         # overall_logs.write('mean overall recall@20: %.2f%%.\n' % (np.array(overall_recall20) * 100).mean())

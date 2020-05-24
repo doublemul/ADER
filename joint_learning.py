@@ -39,7 +39,7 @@ if __name__ == '__main__':
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default='diginetica', type=str)
+    parser.add_argument('--dataset', default='yoochoose', type=str)
     parser.add_argument('--save_dir', default='compare_with_RepeatNet', type=str)
     parser.add_argument('--is_joint', default=True, type=str2bool)
     # test set
@@ -73,10 +73,11 @@ if __name__ == '__main__':
     logs.write(' '.join([str(k) + ',' + str(v) + '\n' for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
 
     # For reproducibility
-    os.environ['PYTHONHASHSEED'] = str(args.random_seed)
-    os.environ['TF_DETERMINISTIC_OPS'] = '1'
-    os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
-    patch()
+    # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    # os.environ['PYTHONHASHSEED'] = str(args.random_seed)
+    # os.environ['TF_DETERMINISTIC_OPS'] = '1'
+    # os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+    # patch()
     np.random.seed(args.random_seed)
     random.seed(args.random_seed)
     tf.set_random_seed(args.random_seed)
@@ -92,9 +93,10 @@ if __name__ == '__main__':
         item_num = 43097
     else:
         item_num = 30470
+
     with tf.device('/gpu:%d' % args.device_num):
         model = SASRec(item_num, args)
-        model.set_vanilla_loss()
+    model.set_vanilla_loss()
 
     # Load data
     dataloader = DataLoader(args, logs)
@@ -102,21 +104,24 @@ if __name__ == '__main__':
     test_sess = dataloader.evaluate_loader()
     max_item = dataloader.max_item()
 
+    train_sampler = Sampler(args, train_sess, args.batch_size)
+    train_sampler.prepare_data()
+    valid_sess = train_sampler.split_data(valid_portion=0.1)
+    train_sampler.shuffle_data()
+    batch_num = train_sampler.batch_num
+    print(batch_num)
+
     # Start of the main algorithm
     stop_counter, best_epoch, best_performance = 0, 0, 0
     start = time.time()
     with tf.Session(config=config) as sess:
 
-        writer = tf.summary.FileWriter('logs', sess.graph)
         saver = tf.train.Saver(max_to_keep=1)
 
         # initialize variables or reload from previous period
         sess.run(tf.global_variables_initializer())
 
         # train
-        train_sampler = Sampler(args, train_sess, args.batch_size)
-        valid_sess = train_sampler.prepare_data(valid_portion=0.1)
-        batch_num = train_sampler.batch_num
         for epoch in range(1, args.num_epochs + 1):
             # train each epoch
             for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
@@ -125,6 +130,8 @@ if __name__ == '__main__':
                 sess.run(model.train_op, {model.input_seq: seq,
                                           model.pos: pos,
                                           model.is_training: True,
+                                          model.max_item: max_item,
+                                          model.dropout_rate: args.dropout_rate,
                                           model.lr: args.lr})
 
             # evaluate performance and early stop
