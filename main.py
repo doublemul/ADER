@@ -89,11 +89,11 @@ if __name__ == '__main__':
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default='YOOCHOOSE-D', type=str)
-    parser.add_argument('--save_dir', default='15k2', type=str)
-    # continue learning parameter
+    parser.add_argument('--dataset', default='YOOCHOOSE', type=str)
+    parser.add_argument('--save_dir', default='try', type=str)
+    # exemplar
     parser.add_argument('--use_exemplar', default=True, type=str2bool)
-    parser.add_argument('--exemplar_size', default=15000, type=int)
+    parser.add_argument('--exemplar_size', default=30000, type=int)
     parser.add_argument('--selection', default=1, type=int)  # 0 for random; 1 for herding; 2 for loss
     parser.add_argument('--lambda_', default=2, type=float)
     parser.add_argument('--fixed_lambda', default=None, type=float)
@@ -255,7 +255,6 @@ if __name__ == '__main__':
                                                       model.is_training: True,
                                                       model.max_item: max_item,
                                                       model.exemplar_logits: logits,
-                                                      # model.item_mask: item_mask,
                                                       model.dropout_rate: args.dropout_rate,
                                                       model.lr: lr})
                     else:
