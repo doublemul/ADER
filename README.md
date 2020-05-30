@@ -11,6 +11,10 @@
 
 ## Requirements
 Python 3.7, TensorFlow 2.1.0, and other common packages listed in `requirements.txt` or `requirements.yaml`.
+### Installing
+`conda create env -f requirement.yaml`
+`conda activate ader`
+
 
 ## License 
 [![License](http://img.shields.io/:license-mit-blue.svg?style=flat-square)](http://badges.mit-license.org)
