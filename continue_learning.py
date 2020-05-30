@@ -20,6 +20,11 @@ from tfdeterminism import patch
 
 
 def str2bool(v):
+    """
+    Convert string to boolean
+    :param v: string
+    :return: boolean True or False
+    """
     if isinstance(v, bool):
         return v
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -59,14 +64,6 @@ def load_exemplars(mode, fast_exemplar=None):
             exemplars_item = pickle.load(file)
     else:
         exemplars_item = fast_exemplar
-
-    # if item_set is not None:
-    #     del_key = []
-    #     for label in item_set:
-    #         if label in exemplars_item.keys():
-    #             del_key.append(label)
-    #     for label in del_key:
-    #         del exemplars_item[label]
 
     for item in exemplars_item.values():
         if isinstance(item, list):
