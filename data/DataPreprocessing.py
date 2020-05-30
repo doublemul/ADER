@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# @Project      : Project
-# @Author       : Xiaoyu LIN
+# @Project      : ADER
 # @File         : DataPreprocessing.py
 # @Description  :
 import argparse
@@ -198,8 +197,8 @@ def generating_txt(time_fraction, sess_end, args):
             time_fraction[period].sort(key=lambda x: x[2])
 
         # generate text file
-        for i, period in enumerate(sorted(time_fraction.keys()), start=1):
-            with open('week_' + str(i) + '.txt', 'w') as file_train:
+        for i, period in enumerate(sorted(time_fraction.keys())):
+            with open('period_' + str(i) + '.txt', 'w') as file_train:
                 for [userId, itemId, time] in time_fraction[period]:
                     file_train.write('%d %d\n' % (userId, itemId))
     else:
@@ -253,7 +252,7 @@ if __name__ == '__main__':
 
     # create dictionary for processed data
     if args.dataset.split('.')[0] == 'yoochoose-clicks':
-        dataset_name = 'YOOCHOOSE-'
+        dataset_name = 'YOOCHOOSE'
     elif args.dataset.split('.')[0] == 'train-item-views':
         dataset_name = 'DIGINETICA'
     if args.is_time_fraction:

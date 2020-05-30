@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# @Project      : SemesterProject
-# @Author       : Xiaouy LIN
+# @Project      : ADER
 # @File         : ADER.py
 # @Description  : ADER model file.
 # The implemention of self-attentive recommender is modified based on https://github.com/kang205/SASRec

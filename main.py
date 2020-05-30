@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# @Project      : SemesterProject
-# @Author       : Xiaouy LIN
+# @Project      : ADER
 # @File         : main.py
 # @Description  : main file for training ADER
 import argparse
@@ -13,7 +12,7 @@ from tqdm import tqdm
 from util import *
 import gc
 import time
-from tfdeterminism import patch
+# from tfdeterminism import patch
 
 
 def str2bool(v):
@@ -42,8 +41,8 @@ def get_periods(args, logs):
     datafiles = os.listdir(os.path.join('..', '..', 'data', args.dataset))
     period_num = int(len(list(filter(lambda file: file.endswith(".txt"), datafiles))))
     logs.write('\nContinue Learning: Number of periods is %d.\n' % period_num)
-    periods = range(1, period_num + 1)
-    for period in periods[: -1]:
+    periods = range(1, period_num)
+    for period in periods:
         if not os.path.isdir(os.path.join('model', 'period%d' % period)):
             os.makedirs(os.path.join('model', 'period%d' % period))
     return periods
@@ -134,7 +133,7 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device_num)
     os.environ['TF_DETERMINISTIC_OPS'] = '1'
     os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
-    patch()
+    # patch()
     np.random.seed(args.random_seed)
     random.seed(args.random_seed)
     tf.set_random_seed(args.random_seed)
@@ -160,7 +159,7 @@ if __name__ == '__main__':
     dataloader = DataLoader(args, item_num, logs)
     best_epoch, item_num_prev = 0, 0
     t_start = time.time()
-    for period in periods[:-1]:
+    for period in periods:
 
         best_performance, performance = 0, 0
         lr = args.lr
@@ -170,7 +169,7 @@ if __name__ == '__main__':
 
         # Prepare data
         # load train data
-        train_sess, train_item_set = dataloader.train_loader(period)
+        train_sess, train_item_set = dataloader.train_loader(period - 1)
         history_item_count = dataloader.get_item_counter() if args.use_history else None
         train_sampler = Sampler(args, train_sess, args.batch_size)
         train_sampler.prepare_data()

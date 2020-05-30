@@ -46,7 +46,7 @@ class DataLoader:
         if self.args.is_joint:
             file_name = '/train.txt'
         else:
-            file_name = '/week_%d.txt' % period
+            file_name = '/period_%d.txt' % period
         with open(self.path + file_name, 'r') as f:
             for line in f:
                 sessId, itemId = line.rstrip().split(' ')
@@ -88,7 +88,7 @@ class DataLoader:
         if self.args.is_joint:
             file_name = '/test.txt'
         else:
-            file_name = '/week_%d.txt' % (period + 1)
+            file_name = '/period_%d.txt' % period
         with open(self.path + file_name, 'r') as f:
             for line in f:
                 total_num += 1
