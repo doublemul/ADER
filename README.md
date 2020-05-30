@@ -16,7 +16,7 @@ Although session-based recommenders have achieved significant improvements due t
 ## Requirements
 Python 3.7, TensorFlow 2.1.0, and other common packages listed in `requirements.txt` or `requirements.yaml`.<br/>
 Install required environment: `conda create env -f requirement.yaml`<br/>
-Activate required environment `conda activate ader`
+Activate required environment: `conda activate ader`
 
 ## Dataset and Pre-processing
 Two widely used dataset are adopted:
