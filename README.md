@@ -27,5 +27,3 @@ click-streams on another e-commerce site over 6 months.
 
 ## License 
 [![License](http://img.shields.io/:license-mit-blue.svg?style=flat-square)](http://badges.mit-license.org)
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
