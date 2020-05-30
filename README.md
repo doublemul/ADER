@@ -33,7 +33,7 @@ For DIGINETICA: run `python DataPreprocessing.py`<br/>
 For YOOCHOOSE: run `python DataPreprocessing.py --dataset=yoochoose-clicks.dat --test_fraction=day`<br/>
 
 ## Model Training
-The implemention of self-attenvie recommender is modified based on [SASRec](https://github.com/kang205/SASRec).<br/>
+The implemention of self-attentive recommender is modified based on [SASRec](https://github.com/kang205/SASRec).<br/>
 To train our model on DIGINETICA: `python main.py`<br/>
 To train our model on YOOCHOOSE: `python main.py --dataset=YOOCHOOSE --lambda_=1.0`
 
