@@ -11,6 +11,11 @@ from data.util import *
 
 
 def str2bool(v):
+    """
+    Convert string to boolean
+    :param v: string
+    :return: boolean True or False
+    """
     if isinstance(v, bool):
         return v
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -54,8 +59,9 @@ def short_remove(reformed_data, args):
     """
     Remove data according to threshold
     :param reformed_data: loaded data, a list: each element is a action, which is a list of [sessId, itemId, time]
-    :param args.threshold_item: minimum number of appearance time of item -1
-    :param args.threshold_sess: minimum length of session -1
+    :param args: args.threshold_item: minimum number of appearance time of item -1
+                 args.threshold_sess: minimum length of session -1
+                 args.yoochoose_select: select a most recent fraction of entire dataset
     :return removed_data: result data after removing
     :return sess_end: a map recording session end time, a dictionary sess_end[sessId]=end_time
     """
@@ -86,6 +92,7 @@ def short_remove(reformed_data, args):
     for [userId, _, time] in removed_data:
         sess_end = generate_sess_end_map(sess_end, userId, time)
 
+    # if yoochoose dataset, choose a most recent fraction of entire dataset
     if args.yoochoose_select and args.dataset == 'yoochoose-clicks.dat':
         max_time = max(map(lambda x: x[2], removed_data))
         if args.test_fraction == 'day':
@@ -93,19 +100,12 @@ def short_remove(reformed_data, args):
         elif args.test_fraction == 'week':
             test_threshold = 86400 * 7
 
-        # test_set = set()
-        # for [userId, itemId, _] in removed_data:
-        #     if not sess_end[userId] < max_time - test_threshold:
-        #         test_set.add(itemId)
-
-        # train_session_times = list(sess_end.values())
         train_session_times = []
         for userId in sess_end.keys():
             if sess_counter[userId] > 1 and sess_end[userId] <= max_time - test_threshold:
                 for _ in range(sess_counter[userId]-1):
                     train_session_times.append(sess_end[userId])
         threshold = np.percentile(train_session_times, (1.0 - args.yoochoose_select) * 100.0, interpolation='lower')
-        # removed_data = list(filter(lambda x: sess_end[x[0]] >= threshold or x[1] in test_set, removed_data))
         removed_data = list(filter(lambda x: sess_end[x[0]] >= threshold, removed_data))
 
     # print information of removed data
@@ -123,17 +123,19 @@ def time_partition(removed_data, session_end, args):
     Partition data according to time periods
     :param removed_data: input data, a list: each element is a action, which is a list of [sessId, itemId, time]
     :param session_end: a dictionary recording session end time, session_end[sessId]=end_time
-    :param : time interval for partition
-    :return: time_fraction: a dictionary, the keys are different time periods,
-    value is a list of actions in that time period
+    :param : args: args.test_fraction: time interval for each partition
+    :return: time_fraction: a dictionary, the keys are different time periods, value is a list of actions in that
+                            time period
     """
     if args.is_time_fraction:
+        # split entire dataset by time interval
         time_fraction = dict()
         all_times = np.array(list(session_end.values()))
         max_time = max(all_times)
         min_time = min(all_times)
 
         if args.dataset == 'train-item-views.csv':
+            # for DIGINETICA, choose the most recent 16 fraction and put left dataset in initial set
             if args.test_fraction == 'week':
                 period_threshold = np.arange(max_time, min_time, -7 * 86400)
             elif args.test_fraction == 'day':
@@ -142,7 +144,9 @@ def time_partition(removed_data, session_end, args):
                 raise ValueError('invalid time fraction')
             period_threshold = np.sort(period_threshold)
             period_threshold = period_threshold[-17:]
+
         elif args.dataset == 'yoochoose-clicks.dat':
+            # for YOOCHOOSE, choose the earliest 17 fraction
             if args.test_fraction == 'week':
                 period_threshold = np.arange(min_time, max_time, 7 * 86400)
             elif args.test_fraction == 'day':
@@ -174,8 +178,9 @@ def generating_txt(time_fraction, sess_end, args):
     """
     Generate final txt file
     :param time_fraction: input data, a dictionary, the keys are different time periods,
-    value is a list of actions in that time period
+                          value is a list of actions in that time period
     :param sess_end: session end time map, sess_map[sessId]=end_time
+    :param : args: args.test_fraction: if not split, time interval for test partition
     """
 
     if args.is_time_fraction:
@@ -192,6 +197,7 @@ def generating_txt(time_fraction, sess_end, args):
         for period in sorted(time_fraction.keys()):
             time_fraction[period].sort(key=lambda x: x[2])
 
+        # generate text file
         for i, period in enumerate(sorted(time_fraction.keys()), start=1):
             with open('week_' + str(i) + '.txt', 'w') as file_train:
                 for [userId, itemId, time] in time_fraction[period]:
@@ -213,6 +219,7 @@ def generating_txt(time_fraction, sess_end, args):
         elif args.test_fraction == 'week':
             test_threshold = 86400 * 7
 
+        # generate text file
         item_set = set()
         with open('test.txt', 'w') as file_test, open('train.txt', 'w') as file_train:
             for [userId, itemId, time] in time_fraction:
@@ -228,11 +235,11 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='train-item-views.csv', type=str)  # 'yoochoose-clicks.dat'
-    parser.add_argument('--is_time_fraction', default=True, type=str2bool)
-    parser.add_argument('--test_fraction', default='day', type=str)
-    parser.add_argument('--threshold_sess', default=1, type=int)
-    parser.add_argument('--threshold_item', default=4, type=int)
-    parser.add_argument('--yoochoose_select', default=1.0, type=float)
+    parser.add_argument('--is_time_fraction', default=True, type=str2bool)  # split into different time fraction or not
+    parser.add_argument('--test_fraction', default='day', type=str)  # 'day' or 'week'
+    parser.add_argument('--threshold_sess', default=1, type=int)  # minimum number of appearance time of item -1
+    parser.add_argument('--threshold_item', default=4, type=int)  # minimum length of session -1
+    parser.add_argument('--yoochoose_select', default=1.0, type=float)  # select most recent portion in yoochoose
     args = parser.parse_args()
     print('Start preprocess ' + args.dataset + ':')
 
@@ -266,8 +273,9 @@ if __name__ == '__main__':
     # generate final txt file
     generating_txt(time_fraction, sess_end, args)
 
-    if args.is_time_fraction:
-        plot_stat(time_fraction)
-    plot_item(removed_data)
+    # plot statistics
+    # if args.is_time_fraction:
+    #     plot_stat(time_fraction)
+    # plot_item(removed_data)
 
     print(args.dataset + ' finish!')
