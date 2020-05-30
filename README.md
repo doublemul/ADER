@@ -1,5 +1,5 @@
 # ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Session-based Recommendation
-Author: Fei MI, Xiaoyu LIN
+Author: Fei MI, Xiaoyu LIN<br\>
 We propose a method called Adaptively Distilled Exemplar Replay (ADER) by periodically replaying
 previous training samples (i.e., exemplars) to the current model with an adaptive distillation loss.
 ## Table of Contents
