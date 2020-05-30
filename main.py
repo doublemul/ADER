@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# @Project      : Project
+# @Project      : SemesterProject
 # @Author       : Xiaouy LIN
 # @File         : main.py
 # @Description  : main file for training ADER

@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# @Project      : Project
+# @Project      : SemesterProject
 # @Author       : Xiaoyu LIN
 # @File         : util.py
-# @Description  :
+# @Description  : Some class to read data, evaluate results, select exemplar
 import random
 import os
 import pickle
 import numpy as np
 import math
 from collections import defaultdict
-from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 
