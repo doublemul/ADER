@@ -39,5 +39,6 @@ To train our model on YOOCHOOSE: `python main.py --dataset=YOOCHOOSE --lambda_=1
 <p align="center">
   <img src="results.png" width="800">
 </p>
+<br/>
 ## License
 [![License](http://img.shields.io/:license-mit-blue.svg?style=flat-square)](http://badges.mit-license.org)
