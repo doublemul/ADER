@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # @Project      : Project
-# @Author       : 
+# @Author       : Xiaouy LIN
 # @File         : main.py
-# @Description  :
+# @Description  : main file for training ADER
 import argparse
 import os
 import math
 import tensorflow.compat.v1 as tf
-from ADER import SASRec
+from ADER import ADER
 from tqdm import tqdm
 from util import *
 import gc
@@ -153,7 +153,7 @@ if __name__ == '__main__':
     else:
         raise ValueError('Invalid dataset name')
     with tf.device('/gpu:%d' % args.device_num):
-        model = SASRec(item_num, args)
+        model = ADER(item_num, args)
 
     # Loop each period for continue learning
     periods = get_periods(args, logs)

@@ -1,11 +1,17 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# @Project      : Project
+# @Author       : Xiaouy LIN
+# @File         : ADER.py
+# @Description  : ADER model file.
+# The implemention of self-attentive recommender is modified based on https://github.com/kang205/SASRec
 from modules import *
 from util import *
 import tensorflow.compat.v1 as tf
 import tqdm
-import copy
 
 
-class SASRec():
+class ADER():
     def __init__(self, item_num, args, reuse=None):
         self.args = args
         self.is_training = tf.placeholder(tf.bool, shape=())
