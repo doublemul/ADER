@@ -236,7 +236,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='train-item-views.csv', type=str)  # 'yoochoose-clicks.dat'
     parser.add_argument('--is_time_fraction', default=True, type=str2bool)  # split into different time fraction or not
-    parser.add_argument('--test_fraction', default='day', type=str)  # 'day' or 'week'
+    parser.add_argument('--test_fraction', default='week', type=str)  # 'day' or 'week'
     parser.add_argument('--threshold_sess', default=1, type=int)  # minimum number of appearance time of item -1
     parser.add_argument('--threshold_item', default=4, type=int)  # minimum length of session -1
     parser.add_argument('--yoochoose_select', default=1.0, type=float)  # select most recent portion in yoochoose
@@ -253,7 +253,7 @@ if __name__ == '__main__':
 
     # create dictionary for processed data
     if args.dataset.split('.')[0] == 'yoochoose-clicks':
-        dataset_name = 'YOOCHOOSE'
+        dataset_name = 'YOOCHOOSE-'
     elif args.dataset.split('.')[0] == 'train-item-views':
         dataset_name = 'DIGINETICA'
     if args.is_time_fraction:
