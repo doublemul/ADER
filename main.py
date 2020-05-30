@@ -4,17 +4,14 @@
 # @Author       : 
 # @File         : main.py
 # @Description  :
-from memory_profiler import profile
 import argparse
 import os
 import math
 import tensorflow.compat.v1 as tf
 from ADER import SASRec
 from tqdm import tqdm
-import tracemalloc
 from util import *
 import gc
-import sys
 import time
 from tfdeterminism import patch
 
