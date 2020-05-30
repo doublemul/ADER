@@ -8,7 +8,7 @@
 - [License](#license)
 
 ## Background
-The implemention of self-attenvie recommender is modified based on [SASRec](https://github.com/kang205/SASRec)
+Although session-based recommenders have achieved significant improvements due to some new techniques like recurrent neural network and attention, they train the model only using entire data or most recent fraction. The growing concern about privacy prohibits recommenders keeping long-term user’s browsing history. On the other hand, more recent data is more useful for recommenders, but how to select the last fraction of data from the entire dataset is a problem in this static scenario. We address those problems by employing existing recommender in an incremental learning scenario and propose a framework called Adaptively Distilled Exemplar Replay (ADER) to balance the model’s ability to learn new data and catastrophic forgetting. It is based on a loss composed of a cross-entropy loss to learn the latest data and fine-tuned distillation loss to keep the knowledge gained from the previous data. We select and update a small exemplar set every period, and use it for distillation in the next period. We evaluate our framework on two benchmark datasets based on the self-attentive recommender. Our experimental results show that ADER outperforms state-of-the-art baselines. Furthermore, we also find ADER overcomes the model trained by the entire dataset, which demonstrates its advantages in removing long-term user data.
 
 ## Requirements
 Python 3.7, TensorFlow 2.1.0, and other common packages listed in `requirements.txt` or `requirements.yaml`.<br/>
@@ -32,6 +32,7 @@ For DIGINETICA: run `python DataPreprocessing.py`<br/>
 For YOOCHOOSE: run `python DataPreprocessing.py --dataset=yoochoose-clicks.dat --test_fraction=day`<br/>
 
 ## Model Training
+The implemention of self-attenvie recommender is modified based on [SASRec](https://github.com/kang205/SASRec).<br/>
 To train our model on DIGINETICA: `python main.py`<br/>
 To train our model on YOOCHOOSE: `python main.py --dataset=YOOCHOOSE --lambda_=1.0`
 
