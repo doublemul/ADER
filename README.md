@@ -26,9 +26,9 @@ The pre-processed data used in our paper is uploaded in `data/DIGINETICA` and `d
 **Note:** The name of each sub-dataset is from 1 to 17, however, we name them from 0 to 16 in our paper.<br/>
 **Note:** Although the sub-dataset of YOOCHOOSE is named as week, it is actually splited by day.
 ### Run data pre-process
-Download `train-item-views.csv` or `yoochoose-clicks.dat` into folder `data\dataset`.
-For DIGINETICA: run `python DataPreprocessing.py`
-For YOOCHOOSE: run `python DataPreprocessing.py --dataset=yoochoose-clicks.dat --test_fraction=day`
+Download `train-item-views.csv` or `yoochoose-clicks.dat` into folder `data\dataset`.<br/>
+For DIGINETICA: run `python DataPreprocessing.py`<br/>
+For YOOCHOOSE: run `python DataPreprocessing.py --dataset=yoochoose-clicks.dat --test_fraction=day`<br/>
 
 
 ## License 
