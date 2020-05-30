@@ -86,13 +86,13 @@ if __name__ == '__main__':
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default='YOOCHOOSE', type=str)
-    parser.add_argument('--save_dir', default='try', type=str)
+    parser.add_argument('--dataset', default='DIGINETICA', type=str)
+    parser.add_argument('--save_dir', default='ADER', type=str)
     # exemplar
     parser.add_argument('--use_exemplar', default=True, type=str2bool)
     parser.add_argument('--exemplar_size', default=30000, type=int)
     parser.add_argument('--selection', default=1, type=int)  # 0 for random; 1 for herding; 2 for loss
-    parser.add_argument('--lambda_', default=2, type=float)
+    parser.add_argument('--lambda_', default=0.8, type=float)
     parser.add_argument('--fixed_lambda', default=None, type=float)
     parser.add_argument('--use_history', default=False, type=str2bool)
     # distillation
