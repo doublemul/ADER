@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# @Project      : SemesterProject
-# @Author       : Xiaoyu LIN
+# @Project      : ADER
 # @File         : util.py
 # @Description  : Some class to read data, evaluate results, select exemplar
 import random
