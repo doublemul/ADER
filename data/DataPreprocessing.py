@@ -123,8 +123,7 @@ def time_partition(removed_data, session_end, args):
     Partition data according to time periods
     :param removed_data: input data, a list: each element is a action, which is a list of [sessId, itemId, time]
     :param session_end: a dictionary recording session end time, session_end[sessId]=end_time
-    :param args.time_fraction: time interval for partition
-    :param args.is_time_fraction: boolean, weather partition or not
+    :param : time interval for partition
     :return: time_fraction: a dictionary, the keys are different time periods,
     value is a list of actions in that time period
     """
@@ -133,17 +132,31 @@ def time_partition(removed_data, session_end, args):
         all_times = np.array(list(session_end.values()))
         max_time = max(all_times)
         min_time = min(all_times)
-        if args.test_fraction == 'week':
-            period_threshold = np.arange(max_time, min_time, -7 * 86400)
-        elif args.test_fraction == 'day':
-            period_threshold = np.arange(max_time, min_time, -86400)
-        else:
-            raise ValueError('invalid time fraction')
-        period_threshold = np.sort(period_threshold)
-        period_threshold = period_threshold[-17:]
+
+        if args.dataset == 'train-item-views.csv':
+            if args.test_fraction == 'week':
+                period_threshold = np.arange(max_time, min_time, -7 * 86400)
+            elif args.test_fraction == 'day':
+                period_threshold = np.arange(max_time, min_time, -86400)
+            else:
+                raise ValueError('invalid time fraction')
+            period_threshold = np.sort(period_threshold)
+            period_threshold = period_threshold[-17:]
+        elif args.dataset == 'yoochoose-clicks.dat':
+            if args.test_fraction == 'week':
+                period_threshold = np.arange(min_time, max_time, 7 * 86400)
+            elif args.test_fraction == 'day':
+                period_threshold = np.arange(min_time, max_time, 86400)
+            else:
+                raise ValueError('invalid time fraction')
+            period_threshold = np.sort(period_threshold)
+            period_threshold = period_threshold[1:]
+            period_threshold = period_threshold[:17]
 
         for [sessId, itemId, time] in removed_data:
             # find period of each action
+            if args.dataset == 'yoochoose-clicks.dat' and time > period_threshold[-1]:
+                continue
             period = period_threshold.searchsorted(time) + 1
             # generate time period for dictionary keys
             if period not in time_fraction:
@@ -204,11 +217,9 @@ def generating_txt(time_fraction, sess_end, args):
         with open('test.txt', 'w') as file_test, open('train.txt', 'w') as file_train:
             for [userId, itemId, time] in time_fraction:
                 if sess_end[userId] < max_time - test_threshold:
-                # if sess_end[userId] < max_time - 86400 * 8:
                     file_train.write('%d %d\n' % (userId, itemId))
                     item_set.add(itemId)
                 else:
-                # elif sess_end[userId] > max_time - 86400 * 7:
                     file_test.write('%d %d\n' % (userId, itemId))
         print(len(item_set))
 
@@ -216,14 +227,13 @@ def generating_txt(time_fraction, sess_end, args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default='train-item-views.csv', type=str)
+    parser.add_argument('--dataset', default='train-item-views.csv', type=str)  # 'yoochoose-clicks.dat'
     parser.add_argument('--is_time_fraction', default=True, type=str2bool)
-    parser.add_argument('--test_fraction', default='week', type=str)
+    parser.add_argument('--test_fraction', default='day', type=str)
     parser.add_argument('--threshold_sess', default=1, type=int)
     parser.add_argument('--threshold_item', default=4, type=int)
-    parser.add_argument('--yoochoose_select', default=0.10, type=float)
+    parser.add_argument('--yoochoose_select', default=1.0, type=float)
     args = parser.parse_args()
-    # args.dataset = 'yoochoose-clicks.dat'
     print('Start preprocess ' + args.dataset + ':')
 
     # For reproducibility
@@ -234,12 +244,11 @@ if __name__ == '__main__':
     os.chdir('dataset')
     sess_map, item_map, reformed_data = read_data(args.dataset)
 
-
     # create dictionary for processed data
     if args.dataset.split('.')[0] == 'yoochoose-clicks':
         dataset_name = 'YOOCHOOSE'
     elif args.dataset.split('.')[0] == 'train-item-views':
-        dataset_name = 'DIGINETICA-N'
+        dataset_name = 'DIGINETICA'
     if args.is_time_fraction:
         dataset_name = dataset_name
     else:
@@ -259,5 +268,6 @@ if __name__ == '__main__':
 
     if args.is_time_fraction:
         plot_stat(time_fraction)
+    plot_item(removed_data)
 
     print(args.dataset + ' finish!')

@@ -42,7 +42,7 @@ class DataLoader:
         :return: train data of current period
         """
         Sessions = defaultdict(list)
-
+        train_item_set = set()
         if self.args.is_joint:
             file_name = '/train.txt'
         else:
@@ -55,6 +55,7 @@ class DataLoader:
                 self.item_set.add(itemId)
                 Sessions[sessId].append(itemId)
                 self.item_counter[itemId - 1] += 1
+                train_item_set.add(itemId)
         sessions = list(Sessions.values())
         del Sessions
         info = 'Train set information: total number of action: %d.' \
@@ -65,7 +66,7 @@ class DataLoader:
         for sess in sessions:
             self.item_counter[sess[0] - 1] -= 1
 
-        return sessions
+        return sessions, train_item_set
 
     def get_item_counter(self):
         """
@@ -83,6 +84,7 @@ class DataLoader:
         Sessions = defaultdict(list)
         removed_num = 0
         total_num = 0
+        test_item_set = set()
         if self.args.is_joint:
             file_name = '/test.txt'
         else:
@@ -99,6 +101,7 @@ class DataLoader:
                     continue
                 else:
                     self.item_set.add(itemId)
+                    test_item_set.add(itemId)
                 Sessions[sessId].append(itemId)
 
         if self.is_remove_item:
@@ -122,7 +125,7 @@ class DataLoader:
         sessions = list(Sessions.values())
         del Sessions
 
-        return sessions, total_num - len(sessions)
+        return sessions, total_num - len(sessions), test_item_set
 
     def max_item(self):
         """
@@ -366,7 +369,7 @@ class ExemplarGenerator:
         self.logs = logs
         self.item_count = np.zeros(max_item)
 
-    def add_exemplar(self, exemplar=None):
+    def add_exemplar(self, exemplar=None, item_set=None):
         """
         This method sorts sub-sessions by their last item.
         """
@@ -382,13 +385,15 @@ class ExemplarGenerator:
             seq, pos = exemplar_sampler.sampler()
             pos = np.array(pos)
             for s, item in zip(seq, pos):
+                if item_set is not None and item not in item_set:
+                    continue
                 session = np.append(s, item)
                 self.sess_by_item[item].append(session)
                 self.item_count[item - 1] += 1
 
     def herding(self, rep, logits, item, seq, m):
         """
-        Herding algorithm for exempler selection
+        Herding algorithm for exemplar selection
         :param rep: representations
         :param item: label
         :param seq: input session (item sequence)
@@ -421,6 +426,8 @@ class ExemplarGenerator:
         self.exemplars = defaultdict(list)
         if history_item_count is not None:
             self.item_count = history_item_count
+        if self.args.disable_m:
+            self.item_count = np.ones_like(self.item_count)
         item_prob = self.item_count / self.item_count.sum()
         item_count = np.random.multinomial(n=self.m, pvals=item_prob, size=1)[0]
         item_count = np.int32(item_count)
@@ -428,8 +435,6 @@ class ExemplarGenerator:
         saved_num = 0
         for item in tqdm(self.sess_by_item, ncols=70, leave=False, unit='b', desc='Selecting exemplar'):
             m = item_count[item - 1]
-            # if m < 0.5:
-            #     continue
             seq = self.sess_by_item[item]
             seq = np.array(seq)
             input_seq = seq[:, :-1]
@@ -489,15 +494,6 @@ class ExemplarGenerator:
         item_count = np.random.multinomial(n=self.m, pvals=item_prob, size=1)[0]
         item_count = np.int32(item_count)
         self.exemplars = defaultdict(list)
-
-        # item_count = item_count * 0
-        # item_count = item_count + self.m
-        # if history_item_count is not None:
-        #     self.item_count = history_item_count
-        # inverse_item_count = 1.0 / (np.where(self.item_count == 0, np.inf, self.item_count))
-        # item_prob = inverse_item_count / inverse_item_count.sum()
-        # item_count = np.random.multinomial(n=self.m, pvals=item_prob, size=1)[0]
-        # item_count = np.int32(item_count)
 
         saved_num = 0
         for item in tqdm(self.sess_by_item, ncols=70, leave=False, unit='b', desc='Selecting exemplar'):

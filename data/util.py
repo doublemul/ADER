@@ -49,6 +49,20 @@ def generate_sess_end_map(sess_end, sessId, time):
         sess_end[sessId] = time
     return sess_end
 
+def generate_sess_strat_map(sess_end, sessId, time):
+    """
+    Generate map recording the session end time.
+    :param sess_end: the map recording session end time, a dictionary see_end[sessId]=end_time
+    :param sessId:session Id of new action
+    :param time:time of new action
+    :return: sess_end: the map recording session end time, a dictionary see_end[sessId]=end_time
+    """
+    if sessId in sess_end:
+        sess_end[sessId] = min(time, sess_end[sessId])
+    else:
+        sess_end[sessId] = time
+    return sess_end
+
 
 def read_gz(dataset_path):
     """
@@ -426,3 +440,20 @@ def plot_new_old_label(time_fraction, sess_end, args):
     plt.show()
     plt.close()
 
+def plot_item(data):
+
+    item_end = dict()
+    item_start = dict()
+    for [_, itemId, time] in data:
+        item_end = generate_sess_end_map(item_end, itemId, time)
+        item_start = generate_sess_strat_map(item_start, itemId, time)
+
+    length = []
+    for itemId in item_end:
+        length.append(item_end[itemId]-item_start[itemId])
+
+    length = np.array(length) / 86400
+    plt.figure()
+    plt.hist(length, density=True, bins=40)
+    plt.savefig('item_length.pdf')
+    plt.show()

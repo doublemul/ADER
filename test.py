@@ -44,16 +44,15 @@ if __name__ == '__main__':
     tf.disable_v2_behavior()
     tf.logging.set_verbosity(tf.logging.ERROR)
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default='DIGINETICA', type=str)
+    parser.add_argument('--dataset', default='YOOCHOOSE-D', type=str)
     parser.add_argument('--save_dir', default='try', type=str)
     parser.add_argument('--remove_item', default=True, type=str2bool)
     parser.add_argument('--is_joint', default=False, type=str2bool)
     # batch size and device
-    parser.add_argument('--test_batch', default=32, type=int)
-    parser.add_argument('--device_num', default=1, type=int)
+    parser.add_argument('--test_batch', default=64, type=int)
+    parser.add_argument('--device_num', default=0, type=int)
     # hyper-parameters grid search
     parser.add_argument('--lr', default=0.0005, type=float)
     parser.add_argument('--num_blocks', default=2, type=int)
@@ -67,12 +66,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # set configurations
-
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device_num)
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
     # build model
-    item_num = 27333 if args.dataset == 'YOOCHOOSE' else 43136
+    item_num = 34627 if args.dataset == 'YOOCHOOSE-N' else 43136
+    if args.dataset=='YOOCHOOSE-D':
+        item_num = 25958
     with tf.device('/gpu:%d' % args.device_num):
         model = SASRec(item_num, args)
 
@@ -88,7 +89,32 @@ if __name__ == '__main__':
     # overall_mrr10_plt = dict()
 
     for args.save_dir in [
-        'NoExemplar-Dropout0.3',
+        # 'lambda0.8',
+        'Finetune',
+        'Dropout',
+        'ADER',
+        'ader2',
+        'ader1',
+        'EWC',
+        'UpperBound'
+        # 'lambda1.2',
+        # 'HerdingExe'
+        # 'lambda1.2',
+        # 'ewc-1.5',
+        # 'ewc-5',
+        # 'UpperBound',
+        # 'NoExemplar-Dropout0.3',
+        # 'NoExemplar-Dropout0.0',
+        # 'HerdingExemplar30000-0.1',
+        # 'HerdingExemplar30000-0.2',
+        # 'HerdingExemplar30000-0.5',
+        # 'HerdingExemplar30000-1.0',
+        # 'HerdingExemplar30000-D0.1',
+        # 'HerdingExemplar30000-D0.2',
+        # 'HerdingExemplar30000-D0.5',
+        # 'HerdingExemplar30000-D0.8',
+        # 'HerdingExemplar30000-D1.0',
+        # 'HerdingExemplar30000-D1.2',
         # 'Herding0.05-Dropout0-',
         # 'NoExemplar-Dropout0.1',
         # 'NoExemplar-Dropout0.2',
@@ -101,24 +127,23 @@ if __name__ == '__main__':
         # 'NoExemplar-Dropout0.5',
         # 'NoExemplar-Dropout0.6',
         # 'NoExemplar-Dropout0.7',
-        # 'RandomExemplar0.03Dropout0',
-        # 'RandomExemplar0.05Dropout0',
-        # 'RandomExemplar0.07Dropout0',
+        # 'RandomExemplar10000',
+        # 'RandomExemplar20000',
+        # 'RandomExemplar30000',
         # 'RandomExemplar0.09Dropout0',
         # 'RandomExemplar0.03Dropout3',
         # 'RandomExemplar0.05Dropout5',
-        'Herding30k-Night',
-        'Herding20k-Night',
-        'Herding10k-Night',
         # 'Herding2k',
-        # 'HerdingExemplar0.07Dropout0',
-        # 'HerdingExemplar0.09Dropout0',
-        # 'HerdingExemplar-Size20000Dropout3',
+        # 'HerdingExemplar30000-0.2',
+        # 'HerdingExemplar30000-0.5',
+
+        # 'HerdingExemplar20000',
+        # 'HerdingExemplar30000',
         # 'HerdingExemplar-Size20000Dropout5',
         # 'LossExemplar0.03Dropout0',
-        # 'LossExemplar0.05Dropout0',
-        # 'LossExemplar0.07Dropout0',
-        # 'LossExemplar0.09Dropout0',
+        # 'LossExemplar10000',
+        # 'LossExemplar20000',
+        # 'LossExemplar30000',
         # 'LossExemplar-Size20000Dropout3',
         # 'LossExemplar-Size20000Dropout5',
     ]:
@@ -161,9 +186,9 @@ if __name__ == '__main__':
                 logs.write('Period %d:\n' % period)
 
                 # Load data
-                train_sess[period] = data_loader.train_loader(period)
+                train_sess[period], _ = data_loader.train_loader(period)
                 if period < periods[-1]:
-                    next_sess, _ = data_loader.evaluate_loader(period)
+                    next_sess, _, _ = data_loader.evaluate_loader(period)
                 max_item = data_loader.max_item()
 
                 # Start of the main algorithm
@@ -237,7 +262,7 @@ if __name__ == '__main__':
     num_bar = len(next_session_mrr10_plt.keys()) / 2
     bars = []
     lines = []
-    fig, axs = plt.subplots(4, 1, sharex='col', figsize=[6.4, 4.8 * 2])
+    fig, axs = plt.subplots(2, 1, sharex='col', figsize=[6.4, 4.8])
     axs[0].set_title('next period performance')
     # axs[0, 1].set_title('overall performance on final model')
     for s, save_dir in enumerate(next_session_mrr10_plt.keys()):
@@ -245,22 +270,23 @@ if __name__ == '__main__':
         next_session_recall20 = next_session_recall20_plt[save_dir]
         # overall_recall20 = overall_recall20_plt[save_dir]
 
-        next_session_recall10 = next_session_recall10_plt[save_dir]
+        # next_session_recall10 = next_session_recall10_plt[save_dir]
         # overall_recall10 = overall_recall10_plt[save_dir]
 
         next_session_mrr20 = next_session_mrr20_plt[save_dir]
         # overall_mrr20 = overall_mrr20_plt[save_dir]
 
-        next_session_mrr10 = next_session_mrr10_plt[save_dir]
+        # next_session_mrr10 = next_session_mrr10_plt[save_dir]
         # overall_mrr10 = overall_mrr10_plt[save_dir]
 
         for i, data in enumerate([next_session_recall20,
-                                  next_session_recall10,
+                                  # next_session_recall10,
                                   next_session_mrr20,
-                                  next_session_mrr10]):
+                                  # next_session_mrr10
+                                  ]):
 
             line, = axs[i].plot(np.arange(1, len(data) + 1), data, label=save_dir)
-            if i == 3:
+            if i == 1:
                 lines.append(line)
             # bar = axs[i, 1].bar(np.arange(1, len(data[1]) + 1) + width * (s - num_bar + 0.5), data[1],
             #                     width=width, label=save_dir)
@@ -268,16 +294,16 @@ if __name__ == '__main__':
             #     bars.append(bar)
 
     axs[0].set_ylabel('Recall@20(%)')
-    axs[1].set_ylabel('Recall@10(%)')
-    axs[2].set_ylabel('MRR@20(%)')
-    axs[3].set_ylabel('MRR@10(%)')
+    # axs[1].set_ylabel('Recall@10(%)')
+    axs[1].set_ylabel('MRR@20(%)')
+    # axs[3].set_ylabel('MRR@10(%)')
     axs[0].set_xticks(np.arange(1, len(data) + 1))
     for ax in axs:
         box = ax.get_position()
         ax.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
     # axs[0, 1].set_xticks(np.arange(1, len(data[1]) + 1))
     fig.tight_layout()
-    axs[3].legend(handles=lines, loc='upper center', bbox_to_anchor=(0.5, -0.1), fancybox=True, shadow=True, ncol=3)
+    axs[1].legend(handles=lines, loc='upper center', bbox_to_anchor=(0.5, -0.1), fancybox=True, shadow=True, ncol=3)
 
     # fig.legend(handles=lines, loc='upper center', bbox_to_anchor=(0.5, 0.04), fancybox=False, ncol=3)
     plt.savefig('results.pdf', bbox_inches='tight')
