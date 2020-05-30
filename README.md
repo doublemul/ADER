@@ -36,7 +36,7 @@ To train our model on DIGINETICA: `python main.py`<br/>
 To train our model on YOOCHOOSE: `python main.py --dataset=YOOCHOOSE --lambda_=1.0`
 
 ## Results
-<img align="center" src="results.png" width="800">
+<img align="center" src="results.png" width="400">
 
 ## License
 [![License](http://img.shields.io/:license-mit-blue.svg?style=flat-square)](http://badges.mit-license.org)
