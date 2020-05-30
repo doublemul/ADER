@@ -13,7 +13,6 @@ class SASRec():
         self.pos = tf.placeholder(tf.int32, shape=None)
         self.exemplar_logits = tf.placeholder(tf.float32, shape=(None, None))
         self.exemplar_pos = tf.placeholder(tf.int32, shape=None)
-        # self.item_mask = tf.placeholder(tf.float32, shape=None)
         self.max_item = tf.placeholder(tf.int32, shape=())
         self.max_item_pre = tf.placeholder(tf.int32, shape=())
         self.lr = tf.placeholder(tf.float32, shape=())
@@ -107,6 +106,9 @@ class SASRec():
         self.train_op = self.optimizer.minimize(self.loss, global_step=self.global_step)
 
     def update_ewc_loss(self, ewc_lambda):
+        """
+        Update loss to EWC loss
+        """
         self.ewc_loss = self.loss
         for v in range(len(self.variables)):
             self.ewc_loss += (ewc_lambda / 2.0) * \
@@ -115,7 +117,9 @@ class SASRec():
         self.train_op = self.optimizer.minimize(self.ewc_loss, global_step=self.global_step)
 
     def update_exemplar_loss(self, lambda_):
-
+        """
+        Update exemplar loss
+        """
         if not self.args.use_distillation:
             train_size = tf.shape(self.input_seq)[0] - tf.shape(self.exemplar_pos)[0]
         else:
@@ -130,12 +134,14 @@ class SASRec():
         # exemplar data
         exemplar_logits = self.logits[train_size:]
         if not self.args.use_distillation:
+            # one-hot label
             exemplar_logits = exemplar_logits[:, :self.max_item_pre]
             indices = self.exemplar_pos - 1
             exemplar_labels = tf.one_hot(indices, self.max_item_pre)
             self.exemp_loss += lambda_ * tf.reduce_mean(
                 tf.nn.softmax_cross_entropy_with_logits(labels=exemplar_labels, logits=exemplar_logits))
         else:
+            # logits-matching
             exemplar_logits = exemplar_logits[:, :tf.shape(self.exemplar_logits)[1]]
             exemplar_logits = exemplar_logits
             exemplar_labels = tf.nn.softmax(self.exemplar_logits)
@@ -144,13 +150,14 @@ class SASRec():
         self.train_op = self.optimizer.minimize(self.exemp_loss, global_step=self.global_step)
 
     def compute_fisher(self, sess, data, batch_size, max_item, dropout_rate):
-        '''
-        computer Fisher information for each parameter
-        :param sess:
-        :param data:
-        :param batch_size:
-        :return:
-        '''
+        """
+        Compute Fisher information for each parameter
+        :param sess: TensorFlow session
+        :param data: selected data to compute fisher
+        :param batch_size: batch size to compute fisher
+        :param max_item: current period item number
+        :param dropout_rate: dropout_rate
+        """
         # initialize Fisher information for most recent task
         self.F_accum = []
         for v in range(len(self.variables)):
@@ -187,6 +194,13 @@ class SASRec():
             self.F_accum[v] /= len(data)
 
     def predict(self, sess, seq, item_idx):
+        """
+        Predict next item
+        :param sess: TensorFlow session
+        :param seq: input item sequence (session)
+        :param item_idx: candidate item index
+        :return: rank of candidate items
+        """
         return sess.run(self.pred_last, {self.input_seq: seq,
                                          self.test_item: item_idx,
                                          self.is_training: False,

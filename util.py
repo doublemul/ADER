@@ -22,6 +22,7 @@ class DataLoader:
     def __init__(self, args, item_num, logs):
         """
         :param args: args
+        :param item_num: all item number of entire dataset
         :param logs: logs
         """
         self.logs = logs
@@ -110,11 +111,6 @@ class DataLoader:
                 if len(Sessions[sessId]) == 1:
                     removed_num += 1
                     delete_keys.append(sessId)
-                # for itemId in Sessions[sessId]:
-                #     if itemId not in self.item_set:
-                #         removed_num += 1
-                #         delete_keys.append(sessId)
-                #         break
             for delete_key in delete_keys:
                 del Sessions[delete_key]
 
@@ -144,8 +140,7 @@ class Sampler:
         """
         :param args: args
         :param data: original data for sampling
-        :param is_train: boolean: train or evaluation (valid/test) sampler, for train, it also return negative sample
-        :param cumulative: cumulative list according to item frequency, to generate negative sample by frequency
+        :param batch_size: size of one batch
         """
         self.maxlen = args.maxlen
         self.data = data
@@ -164,10 +159,9 @@ class Sampler:
     def label_generator(self, session, return_pos=True):
         """
         This method return input sequence as well as positive and negative sample
-        :param return_pos:
+        :param return_pos: if True, return processed session and label, else only return processed session
         :param session: a item sequence
-        :return: train: input sequence, positive sample (label sequence), negative sample
-                 valid/test: input sequence, positive sample (label sequence)
+        :return: input sequence, [label]
         """
         seq = np.zeros([self.maxlen], dtype=np.int32)
         pos = np.array(session[-1], dtype=np.int32)
@@ -184,6 +178,9 @@ class Sampler:
             return seq
 
     def prepare_data(self):
+        """
+        Split original session into sub-sessions
+        """
         self.prepared_data = []
         for session in self.data:
             self.prepared_data.append(session)
@@ -193,17 +190,31 @@ class Sampler:
                     self.prepared_data.append(session[:-t])
 
     def add_exemplar(self, exemplar):
+        """
+        Only add exemplar data
+        :param exemplar: exemplar
+        """
         if exemplar:
             for session in exemplar:
                 self.prepared_data.append(session)
 
     def add_full_exemplar(self, exemplar):
+        """
+        Add exemplar data and logits
+        :param exemplar: exemplar data and logits
+        """
         self.logits = []
         for session, logits in exemplar:
             self.prepared_data.append(session)
             self.logits.append(logits)
 
     def split_data(self, valid_portion, return_train=False):
+        """
+        Split data into valid and train dataset
+        :param valid_portion: the portion of validation dataset w.r.t entire dataset
+        :param return_train: if True, return validation data and train data, else only return validation data
+        :return:
+        """
 
         data_size = len(self.prepared_data)
         sidx = np.arange(data_size, dtype='int32')
@@ -219,7 +230,10 @@ class Sampler:
             return valid_data
 
     def shuffle_data(self):
-
+        """
+        Shuffle data
+        :return: batch number
+        """
         self.dataset_size = len(self.prepared_data)
         self.batch_num = math.ceil(self.dataset_size * 1.0 / self.batch_size)
         self.batch_counter = 0
@@ -358,7 +372,8 @@ class ExemplarGenerator:
         :param args: args
         :param m: number of exemplars per item
         :param data: dataset, train data or valid data
-        :param mode: 'train' or 'valid'
+        :param max_item: accumulative number of item
+        :param logs: logs
         """
         self.sess_by_item = defaultdict(list)
         self.exemplars = dict()
@@ -395,6 +410,7 @@ class ExemplarGenerator:
         """
         Herding algorithm for exemplar selection
         :param rep: representations
+        :param logits: logits
         :param item: label
         :param seq: input session (item sequence)
         :param m: number of exemplar per label
@@ -415,7 +431,6 @@ class ExemplarGenerator:
                 selected_ids.append(ind_max)
                 counter += 1
         self.exemplars[item] = [[seq[i][seq[i] != 0].tolist(), logits[i].tolist()] for i in selected_ids]
-        # self.exemplars[item] = [[seq[i].tolist(), [None]] for i in selected_ids]
         return counter
 
     def herding_selection(self, sess, model, history_item_count=None):
@@ -477,8 +492,7 @@ class ExemplarGenerator:
             loss = np.array(loss)
             logits = np.array(logits)
             selected_ids = loss.argsort()[:int(min(m, seq_num))]
-            # self.exemplars[item] = [[seq[i][seq[i] != 0].tolist(), logits[i].tolist()] for i in selected_ids]
-            self.exemplars[item] = [[seq[i].tolist(), [None]] for i in selected_ids]
+            self.exemplars[item] = [[seq[i][seq[i] != 0].tolist(), logits[i].tolist()] for i in selected_ids]
             saved_num += len(selected_ids)
         print('Total saved exemplar: %d' % saved_num)
         self.logs.write('Total saved exemplar: %d\n' % saved_num)
@@ -510,8 +524,7 @@ class ExemplarGenerator:
                                                  model.is_training: False})
                 logits = np.array(logits)
                 for s, l in zip(selected_seq, logits):
-                    # self.exemplars[item].append([s[s != 0].tolist(), l.tolist()])
-                    self.exemplars[item].append([s.tolist(), [None]])
+                    self.exemplars[item].append([s[s != 0].tolist(), l.tolist()])
                     saved_num += 1
         print('Total saved exemplar: %d' % saved_num)
         self.logs.write('Total saved exemplar: %d\n' % saved_num)

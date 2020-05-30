@@ -9,7 +9,7 @@ import argparse
 import os
 import math
 import tensorflow.compat.v1 as tf
-from SASRec import SASRec
+from ADER import SASRec
 from tqdm import tqdm
 import tracemalloc
 from util import *
