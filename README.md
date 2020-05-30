@@ -36,6 +36,9 @@ To train our model on DIGINETICA: `python main.py`<br/>
 To train our model on YOOCHOOSE: `python main.py --dataset=YOOCHOOSE --lambda_=1.0`
 
 ## Results
+ADER significantly outperforms other methods. More importantly, it even outperforms Joint. This result empirically
+reveals that ADER is a promising solution for the continual recommendation setting by effectively preserving user
+preference patterns learned before.
 ![results](results.png)
 
 
