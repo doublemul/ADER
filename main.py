@@ -104,19 +104,19 @@ if __name__ == '__main__':
     parser.add_argument('--is_joint', default=False, type=str2bool)
     parser.add_argument('--remove_item', default=True, type=str2bool)
     # early stop parameter
-    parser.add_argument('--stop', default=3, type=int)
+    parser.add_argument('--stop', default=5, type=int)
     # batch size and device
-    parser.add_argument('--num_epochs', default=200, type=int)
-    parser.add_argument('--batch_size', default=512, type=int)
-    parser.add_argument('--test_batch', default=64, type=int)
-    parser.add_argument('--device_num', default=1, type=int)
+    parser.add_argument('--num_epochs', default=100, type=int)
+    parser.add_argument('--batch_size', default=256, type=int)
+    parser.add_argument('--test_batch', default=32, type=int)
+    parser.add_argument('--device_num', default=0, type=int)
     # hyper-parameters grid search
     parser.add_argument('--lr', default=0.0005, type=float)
     parser.add_argument('--num_blocks', default=2, type=int)
     parser.add_argument('--num_heads', default=1, type=int)
     # hyper-parameter fixed
     parser.add_argument('--random_seed', default=555, type=int)
-    parser.add_argument('--hidden_units', default=150, type=int)
+    parser.add_argument('--hidden_units', default=100, type=int)
     parser.add_argument('--maxlen', default=50, type=int)
     parser.add_argument('--dropout_rate', default=0.3, type=float)
     parser.add_argument('--l2_emb', default=0.0, type=float)
@@ -296,7 +296,7 @@ if __name__ == '__main__':
             prev_item_set = train_item_set
             saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
             # test performance
-            if 1 < period < periods[-1]:
+            if period < periods[-1]:
                 test_evaluator = Evaluator(args, test_sess, max_item, 'test', model, sess, logs)
                 test_evaluator.evaluate(best_epoch)
 
