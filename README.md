@@ -10,7 +10,7 @@ This is an implementation of continual learning on Python and TensorFlow for ses
 ## Background
 
 ## Requirements
-Python 3.7, TensorFlow ???, and other common packages listed in `requirements.txt`.
+Python 3.7, TensorFlow 2.1.0, and other common packages listed in `requirements.txt`.
 
 ## License 
 [![License](http://img.shields.io/:license-mit-blue.svg?style=flat-square)](http://badges.mit-license.org)
