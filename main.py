@@ -38,7 +38,8 @@ def str2bool(v):
 def get_periods(args, logs):
     """
     This function returns list of periods for joint learning or continue learning
-    :return: [0] for joint learning, [1, 2, ..., period_num] for continue learning
+    :return: [0] for joint learning,
+             [1, 2, ..., period_num] for continue learning
     """
     # if continue learning: periods = [1, 2, ..., period_num]
     datafiles = os.listdir(os.path.join('..', '..', 'data', args.dataset))
@@ -54,10 +55,10 @@ def get_periods(args, logs):
 def load_exemplars(mode, fast_exemplar=None):
     """
     This method load exemplar in previous period
-    :param period: this period
+    :param mode: 'train' or 'valid'
+    :param fast_exemplar: read exemplar directly from previous exemplar variable if None read from .pickle file
     :return: exemplar list
     """
-
     exemplars = []
     if fast_exemplar is None:
         with open('%s_exemplar.pickle' % mode, mode='rb') as file:
@@ -124,11 +125,11 @@ if __name__ == '__main__':
     parser.add_argument('--l2_emb', default=0.0, type=float)
     args = parser.parse_args()
 
-    # set path
+    # Set path
     if not os.path.isdir(os.path.join('results', args.dataset + '_' + args.save_dir)):
         os.makedirs(os.path.join('results', args.dataset + '_' + args.save_dir))
     os.chdir(os.path.join('results', args.dataset + '_' + args.save_dir))
-    # record logs
+    # Record logs
     logs = open('Training_logs.txt', mode='w')
     logs.write(' '.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
 
@@ -141,20 +142,23 @@ if __name__ == '__main__':
     random.seed(args.random_seed)
     tf.set_random_seed(args.random_seed)
 
-    # set configurations
+    # Set configurations
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
     # config.gpu_options.per_process_gpu_memory_fraction = 0.3
-    # build model
-    item_num = 34627 if args.dataset == 'YOOCHOOSE-N' else 43136
-    if args.dataset=='YOOCHOOSE-D':
+
+    # Build model
+    if args.dataset == 'DIGINETICA':
+        item_num = 43136
+    elif args.dataset == 'YOOCHOOSE':
         item_num = 25958
+    else:
+        raise ValueError('Invalid dataset name')
     with tf.device('/gpu:%d' % args.device_num):
         model = SASRec(item_num, args)
-    print(item_num)
 
-    # Loop each period for continue learning #
+    # Loop each period for continue learning
     periods = get_periods(args, logs)
     dataloader = DataLoader(args, item_num, logs)
     best_epoch, item_num_prev = 0, 0
@@ -178,17 +182,16 @@ if __name__ == '__main__':
         test_sess, test_size, test_item_set = dataloader.evaluate_loader(period)
         max_item = dataloader.max_item()
         # exemplar
-        if args.use_exemplar and period > 1:  ##
+        if (args.use_exemplar or args.use_ewc) and period > 1:
             train_exemplar_data_logits = load_exemplars('train', fast_exemplar)
             train_exemplar_size = len(train_exemplar_data_logits)
-            print(train_exemplar_size)
             train_exemplar_subseq = np.array(train_exemplar_data_logits)[:, 0].tolist()
         else:
             train_exemplar_subseq = None
 
-        # set loss
+        # Set loss
         if period > 1 and args.use_exemplar and not args.use_ewc:
-
+            # if use exemplar
             new_item = max_item - item_num_prev
             train_size = train_sampler.data_size()
             lambda_ = args.lambda_ * math.sqrt((item_num_prev / max_item) * (train_exemplar_size / train_size))
@@ -197,7 +200,7 @@ if __name__ == '__main__':
             print('lambda=%f' % lambda_)
             logs.write('lambda=%.6f\n' % lambda_)
             model.update_exemplar_loss(lambda_=lambda_)
-
+            # prepare exemplar sampler
             train_sampler.shuffle_data()
             batch_num = train_sampler.batch_num
             exemplar_batch = int(train_exemplar_size / batch_num)
@@ -206,6 +209,7 @@ if __name__ == '__main__':
             exemplar_samplar.add_full_exemplar(train_exemplar_data_logits)
             exemplar_samplar.shuffle_data()
         else:
+            # if not use exemplar
             if args.use_ewc and period > 1:
                 model.update_ewc_loss(ewc_lambda=args.lambda_)
             else:
@@ -219,21 +223,12 @@ if __name__ == '__main__':
             # initialize variables or reload from previous period
             saver = tf.train.Saver(max_to_keep=1)
             if period > 1:
-                if args.dataset == 'YOOCHOOSE-D' and period == 2:
-                    saver.restore(sess, '../YOOCHOOSE-D_Dropout/model/period1/epoch=11.ckpt')
-                else:
-                    saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
+                saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
             else:
-                if args.dataset == 'YOOCHOOSE-D':
-                    saver.restore(sess, '../YOOCHOOSE-D_Dropout/model/period1/epoch=11.ckpt')
-                else:
-                    sess.run(tf.global_variables_initializer())
+                sess.run(tf.global_variables_initializer())
 
+            # train
             for epoch in range(1, args.num_epochs + 1):
-
-                if args.dataset == 'YOOCHOOSE-D' and period == 1:
-                    best_epoch = 11
-                    break
 
                 # train each epoch
                 for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
@@ -244,7 +239,7 @@ if __name__ == '__main__':
                         ex_seq, ex_pos, logits = exemplar_samplar.exemplar_sampler()
                         seq = seq + ex_seq
                         if not args.use_distillation:
-                            # one-hot
+                            # exemplar using one-hot label
                             sess.run(model.train_op, {model.input_seq: seq,
                                                       model.pos: pos,
                                                       model.is_training: True,
@@ -254,7 +249,7 @@ if __name__ == '__main__':
                                                       model.lr: lr,
                                                       model.max_item_pre: max_item})
                         else:
-                            # logistic-matching
+                            # exemplar using logistic-matching label
                             sess.run(model.train_op, {model.input_seq: seq,
                                                       model.pos: pos,
                                                       model.is_training: True,
@@ -264,6 +259,7 @@ if __name__ == '__main__':
                                                       model.dropout_rate: args.dropout_rate,
                                                       model.lr: lr})
                     else:
+                        # without using exemplar
                         sess.run(model.train_op, {model.input_seq: seq,
                                                   model.pos: pos,
                                                   model.is_training: True,
@@ -271,6 +267,7 @@ if __name__ == '__main__':
                                                   model.dropout_rate: args.dropout_rate,
                                                   model.lr: lr})
                 if period > 1 and args.use_ewc:
+                    # if use ewc, update saved variables and fisher for each epoch
                     loss, ewc = sess.run([model.loss, model.ewc_loss], {model.input_seq: seq,
                                                                         model.pos: pos,
                                                                         model.is_training: False,
@@ -301,10 +298,7 @@ if __name__ == '__main__':
 
             item_num_prev = max_item
             prev_item_set = train_item_set
-            if args.dataset == 'YOOCHOOSE-D' and period == 1:
-                saver.restore(sess, '../YOOCHOOSE-D_Dropout/model/period1/epoch=11.ckpt')
-            else:
-                saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
+            saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
             # test performance
             if 1 < period < periods[-1]:
                 test_evaluator = Evaluator(args, test_sess, max_item, 'test', model, sess, logs)
