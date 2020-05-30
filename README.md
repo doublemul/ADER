@@ -8,6 +8,7 @@
 - [License](#license)
 
 ## Background
+The implemention of self-attenvie recommender is modified based on [SASRec](https://github.com/kang205/SASRec)
 
 ## Requirements
 Python 3.7, TensorFlow 2.1.0, and other common packages listed in `requirements.txt` or `requirements.yaml`.<br/>
@@ -33,5 +34,8 @@ For YOOCHOOSE: run `python DataPreprocessing.py --dataset=yoochoose-clicks.dat -
 ## Model Training
 To train our model on DIGINETICA: `python main.py`<br/>
 To train our model on YOOCHOOSE: `python main.py --dataset=YOOCHOOSE --lambda_=1.0`
+
+## Results
+<img src="plots.pdf" width="400">
 ## License 
 [![License](http://img.shields.io/:license-mit-blue.svg?style=flat-square)](http://badges.mit-license.org)
