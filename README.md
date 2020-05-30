@@ -6,6 +6,8 @@ previous training samples (i.e., exemplars) to the current model with an adaptiv
 - [Background](#background)
 - [Requirements](#requirements)
 - [Dataset and Pre-processing](#dataset)
+- [Model Training](#training)
+- [Results](#results)
 - [License](#license)
 
 ## Background
