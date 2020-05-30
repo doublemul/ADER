@@ -30,6 +30,8 @@ Download `train-item-views.csv` or `yoochoose-clicks.dat` into folder `data\data
 For DIGINETICA: run `python DataPreprocessing.py`<br/>
 For YOOCHOOSE: run `python DataPreprocessing.py --dataset=yoochoose-clicks.dat --test_fraction=day`<br/>
 
-
+##Model Training
+To train our model on DIGINETICA: `python main.py`
+To train our model on YOOCHOOSE: `python main.py --dataset=YOOCHOOSE --lambda_=1.0`
 ## License 
 [![License](http://img.shields.io/:license-mit-blue.svg?style=flat-square)](http://badges.mit-license.org)
