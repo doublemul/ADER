@@ -25,10 +25,7 @@ Two widely used dataset are adopted:
 site over a 5 months, and it is used for CIKM Cup 2016.
 - [YOOCHOOSE](http://2015.recsyschallenge.com/challenge.html) :It is another dataset used by RecSys Challenge 2015  for predicting
 click-streams on another e-commerce site over 6 months.
-### Pre-process
 The pre-processed data used in our paper is uploaded in `data/DIGINETICA` and `data/YOOCHOOSE` folder.<br/>
-**Note:** The name of each sub-dataset is from 1 to 17, however, we name them from 0 to 16 in our paper.<br/>
-**Note:** Although the sub-dataset of YOOCHOOSE is named as week, it is actually splited by day.
 ### Run data pre-process
 Download `train-item-views.csv` or `yoochoose-clicks.dat` into folder `data\dataset`.<br/>
 For DIGINETICA: run `python DataPreprocessing.py`<br/>
