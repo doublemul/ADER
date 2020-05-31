@@ -12,7 +12,7 @@ from tqdm import tqdm
 from util import *
 import gc
 import time
-# from tfdeterminism import patch
+from tfdeterminism import patch
 
 
 def str2bool(v):
@@ -107,7 +107,7 @@ if __name__ == '__main__':
     # batch size and device
     parser.add_argument('--num_epochs', default=100, type=int)
     parser.add_argument('--batch_size', default=256, type=int)
-    parser.add_argument('--test_batch', default=32, type=int)
+    parser.add_argument('--test_batch', default=64, type=int)
     parser.add_argument('--device_num', default=0, type=int)
     # hyper-parameters grid search
     parser.add_argument('--lr', default=0.0005, type=float)
@@ -115,7 +115,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_heads', default=1, type=int)
     # hyper-parameter fixed
     parser.add_argument('--random_seed', default=555, type=int)
-    parser.add_argument('--hidden_units', default=100, type=int)
+    parser.add_argument('--hidden_units', default=150, type=int)
     parser.add_argument('--maxlen', default=50, type=int)
     parser.add_argument('--dropout_rate', default=0.3, type=float)
     parser.add_argument('--l2_emb', default=0.0, type=float)
@@ -133,7 +133,7 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device_num)
     os.environ['TF_DETERMINISTIC_OPS'] = '1'
     os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
-    # patch()
+    patch()
     np.random.seed(args.random_seed)
     random.seed(args.random_seed)
     tf.set_random_seed(args.random_seed)
