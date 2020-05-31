@@ -29,13 +29,25 @@ click-streams on another e-commerce site over 6 months.
 The pre-processed data used in our paper is uploaded in `data/DIGINETICA` and `data/YOOCHOOSE` folder.<br/>
 ### Run data pre-process
 Download `train-item-views.csv` or `yoochoose-clicks.dat` into folder `data\dataset`.<br/>
-For DIGINETICA: run `python DataPreprocessing.py`<br/>
-For YOOCHOOSE: run `python DataPreprocessing.py --dataset=yoochoose-clicks.dat --test_fraction=day`<br/>
+For DIGINETICA, run from the `data` folder of the project:
+```
+python DataPreprocessing.py
+```
+For YOOCHOOSE, run from the `data` folder of the project:
+```
+python DataPreprocessing.py --dataset=yoochoose-clicks.dat --test_fraction=day
+```
 
 ## Model Training
 The implemention of self-attentive recommender is modified based on [SASRec](https://github.com/kang205/SASRec).<br/>
-To train our model on DIGINETICA: `python main.py`<br/>
-To train our model on YOOCHOOSE: `python main.py --dataset=YOOCHOOSE --lambda_=1.0`
+To train our model on DIGINETICA, run from the root of the project:
+```
+python main.py
+```
+To train our model on YOOCHOOSE, run from the root of the project:
+```
+python main.py --dataset=YOOCHOOSE --lambda_=1.0 --batch_size=512 --test_batch=64
+```
 
 ## Results
 ADER significantly outperforms other methods. More importantly, it even outperforms Joint. This result empirically
