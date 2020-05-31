@@ -35,7 +35,10 @@ For YOOCHOOSE: run `python DataPreprocessing.py --dataset=yoochoose-clicks.dat -
 ## Model Training
 The implemention of self-attentive recommender is modified based on [SASRec](https://github.com/kang205/SASRec).<br/>
 To train our model on DIGINETICA: `python main.py`<br/>
-To train our model on YOOCHOOSE: `python main.py --dataset=YOOCHOOSE --lambda_=1.0 --batch_size=512 --test_batch=64`
+To train our model on YOOCHOOSE: 
+```
+python main.py --dataset=YOOCHOOSE --lambda_=1.0 --batch_size=512 --test_batch=64
+```
 
 ## Results
 ADER significantly outperforms other methods. More importantly, it even outperforms Joint. This result empirically
