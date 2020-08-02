@@ -6,7 +6,7 @@ ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Sessio
 
 Author: Fei Mi, Xiaoyu Lin, Boi Faltings
 
-Please cite our paper if you use the code:
+Please cite our paper if you use the code or datasets.
 
 ## Table of Contents
 
