@@ -84,19 +84,21 @@ if __name__ == '__main__':
     parser.add_argument('--use_exemplar', default=True, type=str2bool)  # use exemplar or not
     parser.add_argument('--exemplar_size', default=30000, type=int)  # size of exemplars
     parser.add_argument('--selection', default=1, type=int)  # exemplar selection criterion random:0 herding:1 loss:2
-    parser.add_argument('--lambda_', default=0.8, type=float)   # base adaptive weight
-    parser.add_argument('--fixed_lambda', default=None, type=float)
-    parser.add_argument('--use_history', default=False, type=str2bool)
+    parser.add_argument('--lambda_', default=0.8, type=float)  # base adaptive weight
+    parser.add_argument('--fixed_lambda', default=None, type=float)  # if float, lambda is fixed
+    parser.add_argument('--use_history', default=False, type=str2bool)  # use all past data to generate M
     # distillation
-    parser.add_argument('--use_distillation', default=True, type=str2bool)
-    parser.add_argument('--disable_m', default=False, type=str2bool)
+    parser.add_argument('--use_distillation', default=True, type=str2bool)  # if true, add distillation loss
+    parser.add_argument('--disable_m', default=False, type=str2bool)  # if true, fix the number of exemplar per item
     # ewc
-    parser.add_argument('--use_ewc', default=False, type=str2bool)
+    parser.add_argument('--use_ewc', default=False, type=str2bool)  # if true, add elastic weight consolidation
     # data parameter
-    parser.add_argument('--is_joint', default=False, type=str2bool)
-    parser.add_argument('--remove_item', default=True, type=str2bool)
+    parser.add_argument('--is_joint', default=False, type=str2bool)  # if true, use all previous data
+    parser.add_argument('--remove_item', default=True,
+                        type=str2bool)  # if true, remove the item in test set but not appear in train set
     # early stop parameter
-    parser.add_argument('--stop', default=5, type=int)
+    parser.add_argument('--stop', default=5,
+                        type=int)  # stop training if the performance not improve for consecutive 5 epochs
     # batch size and device
     parser.add_argument('--num_epochs', default=100, type=int)
     parser.add_argument('--batch_size', default=256, type=int)
@@ -135,7 +137,6 @@ if __name__ == '__main__':
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
-    # config.gpu_options.per_process_gpu_memory_fraction = 0.3
 
     # Build model
     if args.dataset == 'DIGINETICA':
@@ -152,13 +153,14 @@ if __name__ == '__main__':
     dataloader = DataLoader(args, item_num, logs)
     best_epoch, item_num_prev = 0, 0
     t_start = time.time()
-    for period in periods:
 
-        best_performance, performance = 0, 0
-        lr = args.lr
+    for period in periods:
 
         print('Period %d:' % period)
         logs.write('Period %d:\n' % period)
+        lr = args.lr
+        # record performance for early stop
+        best_performance, performance = 0, 0
 
         # Prepare data
         # load train data
@@ -180,7 +182,8 @@ if __name__ == '__main__':
 
         # Set loss
         if period > 1 and args.use_exemplar and not args.use_ewc:
-            # if use exemplar
+            # add distillation loss
+            # find lambda for current cycle
             new_item = max_item - item_num_prev
             train_size = train_sampler.data_size()
             lambda_ = args.lambda_ * math.sqrt((item_num_prev / max_item) * (train_exemplar_size / train_size))
@@ -198,7 +201,7 @@ if __name__ == '__main__':
             exemplar_samplar.add_full_exemplar(train_exemplar_data_logits)
             exemplar_samplar.shuffle_data()
         else:
-            # if not use exemplar
+            # add ewc loss
             if args.use_ewc and period > 1:
                 model.update_ewc_loss(ewc_lambda=args.lambda_)
             else:
@@ -212,6 +215,7 @@ if __name__ == '__main__':
             # initialize variables or reload from previous period
             saver = tf.train.Saver(max_to_keep=1)
             if period > 1:
+                # load model trained from previous cycle
                 saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
             else:
                 sess.run(tf.global_variables_initializer())
@@ -222,9 +226,10 @@ if __name__ == '__main__':
                 # train each epoch
                 for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
                               desc='Training epoch %d/%d' % (epoch, args.num_epochs)):
+                    # load train batch
                     seq, pos = train_sampler.sampler()
-                    if period > 1 and args.use_exemplar and not args.use_ewc:
 
+                    if period > 1 and args.use_exemplar and not args.use_ewc:
                         ex_seq, ex_pos, logits = exemplar_samplar.exemplar_sampler()
                         seq = seq + ex_seq
                         if not args.use_distillation:
@@ -284,6 +289,7 @@ if __name__ == '__main__':
                     best_performance = performance
                     saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
 
+            # save current meta-data for next cycle
             item_num_prev = max_item
             prev_item_set = train_item_set
             saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
@@ -311,6 +317,7 @@ if __name__ == '__main__':
                 # train_exemplar.save('train')
                 del train_exemplar
 
+                # if use ewc method, calculate fisher and save variable
                 if args.use_ewc:
                     train_exemplar_subseq = np.array(load_exemplars('train', fast_exemplar))[:, 0].tolist()
                     model.variables_prev = sess.run(model.variables)
