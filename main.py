@@ -3,6 +3,7 @@
 # @Project      : ADER
 # @File         : main.py
 # @Description  : main file for training ADER
+# @Author       : Xiaoyu Lin, Fei Mi, Boi Faltings
 import argparse
 import os
 import math
@@ -42,6 +43,7 @@ def get_periods(args, logs):
     period_num = int(len(list(filter(lambda file: file.endswith(".txt"), datafiles))))
     logs.write('\nContinue Learning: Number of periods is %d.\n' % period_num)
     periods = range(1, period_num)
+    #  create dictionary to save model
     for period in periods:
         if not os.path.isdir(os.path.join('model', 'period%d' % period)):
             os.makedirs(os.path.join('model', 'period%d' % period))
@@ -68,15 +70,6 @@ def load_exemplars(mode, fast_exemplar=None):
     return exemplars
 
 
-def split_data(data, choice_num):
-    data_size = len(data)
-    sidx = np.arange(data_size, dtype='int32')
-    np.random.shuffle(sidx)
-    large_data = [data[s] for s in sidx[choice_num:]]
-    small_data = [data[s] for s in sidx[:choice_num]]
-    return large_data, small_data
-
-
 if __name__ == '__main__':
 
     gc.enable()
@@ -85,13 +78,13 @@ if __name__ == '__main__':
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default='DIGINETICA', type=str)
-    parser.add_argument('--save_dir', default='ADER', type=str)
+    parser.add_argument('--dataset', default='DIGINETICA', type=str)  # name of dataset 'DIGINETICA' or 'YOOCHOOSE'
+    parser.add_argument('--save_dir', default='ADER', type=str)  # name of dictionary save the results
     # exemplar
-    parser.add_argument('--use_exemplar', default=True, type=str2bool)
-    parser.add_argument('--exemplar_size', default=30000, type=int)
-    parser.add_argument('--selection', default=1, type=int)  # 0 for random; 1 for herding; 2 for loss
-    parser.add_argument('--lambda_', default=0.8, type=float)
+    parser.add_argument('--use_exemplar', default=True, type=str2bool)  # use exemplar or not
+    parser.add_argument('--exemplar_size', default=30000, type=int)  # size of exemplars
+    parser.add_argument('--selection', default=1, type=int)  # exemplar selection criterion random:0 herding:1 loss:2
+    parser.add_argument('--lambda_', default=0.8, type=float)   # base adaptive weight
     parser.add_argument('--fixed_lambda', default=None, type=float)
     parser.add_argument('--use_history', default=False, type=str2bool)
     # distillation

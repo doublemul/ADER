@@ -534,3 +534,18 @@ class ExemplarGenerator:
         with open('%s_exemplar.pickle' % mode, mode='wb') as file:
             pickle.dump(self.exemplars, file)
         del self.exemplars
+
+
+def split_data(data, choice_num):
+    """
+    Split the data into two parts and the number of data in second part is given by choice_num
+    :param data: original data
+    :param choice_num: the number of data in second part
+    :return: two split data parts
+    """
+    data_size = len(data)
+    sidx = np.arange(data_size, dtype='int32')
+    np.random.shuffle(sidx)
+    first_part = [data[s] for s in sidx[choice_num:]]
+    second_part = [data[s] for s in sidx[:choice_num]]
+    return first_part, second_part
