@@ -29,7 +29,7 @@ def generate_name_Id_map(name, map):
     if name in map:
         Id = map[name]
     else:
-        Id = len(map.keys())+1
+        Id = len(map.keys()) + 1
         map[name] = Id
     return Id
 
@@ -47,6 +47,7 @@ def generate_sess_end_map(sess_end, sessId, time):
     else:
         sess_end[sessId] = time
     return sess_end
+
 
 def generate_sess_strat_map(sess_end, sessId, time):
     """
@@ -195,15 +196,15 @@ def read_csv(dataset_path):
                     time = int(datetime.datetime.strptime(date, "%Y-%m-%d").timestamp()) + timeframe * converter
                 else:
                     continue
-            ##############################
-            # # without sequence information
-            # reader = csv.DictReader(f, delimiter=';')
-            # for sample in tqdm.tqdm(reader, desc='Loading data'):
-            #     sess = sample['sessionId']
-            #     item = sample['itemId']
-            #     time = sample['eventdate']
-            #     time = int(datetime.datetime.strptime(time, "%Y-%m-%d").timestamp())
-            ##########################
+                ##############################
+                # # without sequence information
+                # reader = csv.DictReader(f, delimiter=';')
+                # for sample in tqdm.tqdm(reader, desc='Loading data'):
+                #     sess = sample['sessionId']
+                #     item = sample['itemId']
+                #     time = sample['eventdate']
+                #     time = int(datetime.datetime.strptime(time, "%Y-%m-%d").timestamp())
+                ##########################
                 sessId = generate_name_Id_map(sess, sess_map)
                 itemId = generate_name_Id_map(item, item_map)
                 reformed_data.append([sessId, itemId, time])
@@ -213,7 +214,6 @@ def read_csv(dataset_path):
 
 
 def plot_stat(time_fraction):
-
     total_item, item_num, user_num, action_num, new_num, old_num = [], [], [], [], [], []
     total_item_set, user_num_set, item_num_set, old_item_set = set(), set(), set(), set()
 
@@ -252,9 +252,9 @@ def plot_stat(time_fraction):
                    width, label='# item')
     for x, y in zip(np.arange(len(time_fraction.keys())), item_num):
         plt.text(x, y, '%d' % y, ha='center', va='bottom', rotation=30, size='x-small')
-    bar2 = plt.bar(np.arange(len(time_fraction.keys())) + width, np.array(total_item)-np.array([0]+total_item[:-1]),
+    bar2 = plt.bar(np.arange(len(time_fraction.keys())) + width, np.array(total_item) - np.array([0] + total_item[:-1]),
                    width, label='# new item')
-    for x, y in zip(np.arange(len(time_fraction.keys())), np.array(total_item)-np.array([0]+total_item[:-1])):
+    for x, y in zip(np.arange(len(time_fraction.keys())), np.array(total_item) - np.array([0] + total_item[:-1])):
         plt.text(x + width, y, '%d' % y, ha='center', va='bottom', rotation=30, size='x-small')
     plt.ylabel('# item or # new item')
     axes2 = plt.twinx()
@@ -263,7 +263,7 @@ def plot_stat(time_fraction):
     figures = [bar1] + [bar2] + line1
     labs = [l.get_label() for l in figures]
     axes2.legend(figures, labs, loc='upper center', bbox_to_anchor=(0.5, -0.05),
-          fancybox=True, shadow=True, ncol=5)
+                 fancybox=True, shadow=True, ncol=5)
     axes2.set_ylabel('# accumulate item')
     plt.xticks(range(len(time_fraction.keys())), sorted(time_fraction.keys()))
     plt.savefig('sta_item.pdf')
@@ -272,8 +272,8 @@ def plot_stat(time_fraction):
 
     plt.figure()
     plt.title('Average session length vs time')
-    plt.bar(np.arange(len(time_fraction.keys())), np.array(action_num)/np.array(user_num))
-    for x, y in zip(np.arange(len(time_fraction.keys())), np.array(action_num)/np.array(user_num)):
+    plt.bar(np.arange(len(time_fraction.keys())), np.array(action_num) / np.array(user_num))
+    for x, y in zip(np.arange(len(time_fraction.keys())), np.array(action_num) / np.array(user_num)):
         plt.text(x, y, '%.2f' % y, ha='center', va='bottom')
     plt.xticks(range(len(time_fraction.keys())), sorted(time_fraction.keys()))
     plt.savefig('sta_length.pdf')
@@ -332,7 +332,6 @@ def plot_stat(time_fraction):
 
 
 def plot_item(data):
-
     item_end = dict()
     item_start = dict()
     for [_, itemId, time] in data:
@@ -341,7 +340,7 @@ def plot_item(data):
 
     length = []
     for itemId in item_end:
-        length.append(item_end[itemId]-item_start[itemId])
+        length.append(item_end[itemId] - item_start[itemId])
 
     length = np.array(length) / 86400
     plt.figure()
