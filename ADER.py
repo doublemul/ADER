@@ -85,7 +85,7 @@ class ADER():
 
         # find representation
         self.rep = self.seq[:, -1, :]
-
+        # save variables for EWC
         self.variables = tf.get_collection(tf.GraphKeys.VARIABLES)
         # del self.variables[1]
 
@@ -126,6 +126,7 @@ class ADER():
         """
         Update exemplar loss
         """
+        # fine the number of train data from current cycle
         if not self.args.use_distillation:
             train_size = tf.shape(self.input_seq)[0] - tf.shape(self.exemplar_pos)[0]
         else:
@@ -149,7 +150,6 @@ class ADER():
         else:
             # logits-matching
             exemplar_logits = exemplar_logits[:, :tf.shape(self.exemplar_logits)[1]]
-            exemplar_logits = exemplar_logits
             exemplar_labels = tf.nn.softmax(self.exemplar_logits)
             self.exemp_loss += lambda_ * tf.reduce_mean(
                 tf.nn.softmax_cross_entropy_with_logits(labels=exemplar_labels, logits=exemplar_logits))

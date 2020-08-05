@@ -24,7 +24,7 @@ def generate_name_Id_map(name, map):
     Given a name and map, return corresponding Id. If name not in map, generate a new Id.
     :param name: session or item name in dataset
     :param map: existing map, a dictionary: map[name]=Id
-    :return: Id: allocated Id of the corresponding name
+    :return: Id: allocated new Id of the corresponding name
     """
     if name in map:
         Id = map[name]

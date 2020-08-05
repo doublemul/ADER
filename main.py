@@ -70,6 +70,21 @@ def load_exemplars(mode, fast_exemplar=None):
     return exemplars
 
 
+def split_data(data, choice_num):
+    """
+    Split the data into two parts and the number of data in second part is given by choice_num
+    :param data: original data
+    :param choice_num: the number of data in second part
+    :return: two split data parts
+    """
+    data_size = len(data)
+    sidx = np.arange(data_size, dtype='int32')
+    np.random.shuffle(sidx)
+    first_part = [data[s] for s in sidx[choice_num:]]
+    second_part = [data[s] for s in sidx[:choice_num]]
+    return first_part, second_part
+
+
 if __name__ == '__main__':
 
     gc.enable()
@@ -263,7 +278,7 @@ if __name__ == '__main__':
                     # if use ewc, update saved variables and fisher for each epoch
                     loss, ewc = sess.run([model.loss, model.ewc_loss], {model.input_seq: seq,
                                                                         model.pos: pos,
-                                                                        model.is_training: False,
+                                                                        model.is_training: True,
                                                                         model.max_item: max_item,
                                                                         model.dropout_rate: args.dropout_rate,
                                                                         model.lr: lr})

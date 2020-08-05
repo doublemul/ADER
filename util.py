@@ -16,7 +16,6 @@ class DataLoader:
     """
     DataLoader object to load train, valid and test data from dataset.
     """
-
     def __init__(self, args, item_num, logs):
         """
         :param args: args
@@ -25,7 +24,6 @@ class DataLoader:
         """
         self.logs = logs
         self.args = args
-
         self.item_set = set()
         if args.is_joint:
             self.path = os.path.join('..', '..', 'data', '%s_joint' % args.dataset)
@@ -78,7 +76,7 @@ class DataLoader:
         """
         This method load and return test or valid data according to mode of specific period
         :param period: current period
-        :return: test or valid data according to mode
+        :return: test data
         """
         Sessions = defaultdict(list)
         removed_num = 0
@@ -384,7 +382,7 @@ class ExemplarGenerator:
 
     def add_exemplar(self, exemplar=None, item_set=None):
         """
-        This method sorts sub-sessions by their last item.
+        This method sorts sub-sessions by their last item (label).
         """
         self.sess_by_item = defaultdict(list)
         exemplar_sampler = Sampler(self.args, self.data, self.args.batch_size)
@@ -534,18 +532,3 @@ class ExemplarGenerator:
         with open('%s_exemplar.pickle' % mode, mode='wb') as file:
             pickle.dump(self.exemplars, file)
         del self.exemplars
-
-
-def split_data(data, choice_num):
-    """
-    Split the data into two parts and the number of data in second part is given by choice_num
-    :param data: original data
-    :param choice_num: the number of data in second part
-    :return: two split data parts
-    """
-    data_size = len(data)
-    sidx = np.arange(data_size, dtype='int32')
-    np.random.shuffle(sidx)
-    first_part = [data[s] for s in sidx[choice_num:]]
-    second_part = [data[s] for s in sidx[:choice_num]]
-    return first_part, second_part
