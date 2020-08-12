@@ -30,7 +30,7 @@ Two widely used dataset are adopted:
 ### Dataset
 - [DIGINETICA](http://cikm2016.cs.iupui.edu/cikm-cup): This dataset contains click-streams data on a e-commerce
 site over 5 months, and it is used for CIKM Cup 2016.
-- [YOOCHOOSE](http://2015.recsyschallenge.com/challenge.html) :It is another dataset used by RecSys Challenge 2015 for predicting
+- [YOOCHOOSE](http://2015.recsyschallenge.com/challenge.html): It is another dataset used by RecSys Challenge 2015 for predicting
 click-streams on another e-commerce site over 6 months.
 
 The pre-processed data used in our paper is uploaded in `data/DIGINETICA` and `data/YOOCHOOSE` folder.<br/>
