@@ -15,7 +15,6 @@ Please cite our paper if you use the code or datasets.
 - [Dataset and Pre-processing](#dataset-and-pre-processing)
 - [Model Training](#model-training)
 - [Results](#results)
-- [License](#license)
 
 ## Background
 Although session-based recommenders have achieved significant improvements due to some new techniques like recurrent neural network and attention, they train the model only using entire data or most recent fraction. The growing concern about privacy prohibits recommenders keeping long-term user’s browsing history. On the other hand, more recent data is more useful for recommenders, but how to select the last fraction of data from the entire dataset is a problem in this static scenario. We address those problems by employing existing recommender in an incremental learning scenario and propose a framework called Adaptively Distilled Exemplar Replay (ADER) to balance the model’s ability to learn new data and catastrophic forgetting. It is based on a loss composed of a cross-entropy loss to learn the latest data and fine-tuned distillation loss to keep the knowledge gained from the previous data. We select and update a small exemplar set every period, and use it for distillation in the next period. We evaluate our framework on two benchmark datasets based on the self-attentive recommender. Our experimental results show that ADER outperforms state-of-the-art baselines. Furthermore, we also find ADER overcomes the model trained by the entire dataset, which demonstrates its advantages in removing long-term user data.
@@ -62,6 +61,3 @@ reveals that ADER is a promising solution for the continual recommendation setti
 preference patterns learned before.
 ![results](results.png)
 
-
-## License
-[![License](http://img.shields.io/:license-mit-blue.svg?style=flat-square)](http://badges.mit-license.org)
