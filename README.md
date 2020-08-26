@@ -1,5 +1,5 @@
 # ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Session-based Recommendation
-**EPFL | [Artificial Intelligence Laboratory (LIA)](https://lia.epfl.ch/) | Semester Project (2020 Spring) | RecSys'20**
+**EPFL | [Artificial Intelligence Laboratory (LIA)](https://lia.epfl.ch/) | Semester Project (2020 Spring)**
 ## About
 This is our implementation for the paper:
 
