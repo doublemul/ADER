@@ -5,7 +5,7 @@
 ## About
 This is our implementation for the paper:
 
-ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Session-based Recommendation
+[ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Session-based Recommendation](https://arxiv.org/abs/2007.12000)
 
 Author: Fei Mi, Xiaoyu Lin, Boi Faltings
 
