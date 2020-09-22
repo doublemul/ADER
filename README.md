@@ -1,18 +1,14 @@
 # ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Session-based Recommendation
-**EPFL | [Artificial Intelligence Laboratory (LIA)](https://lia.epfl.ch/) | Semester Project (Spring 2020)**
+**EPFL | [Artificial Intelligence Laboratory (LIA)](https://lia.epfl.ch/) | Semester Project (Spring 2020)**  
+**RecSys 2020 | Short paper**
 
-**RecSys 2020**
 ## About
-This is our implementation for the paper:
-
-[ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Session-based Recommendation](https://arxiv.org/abs/2007.12000)
-
-Author: Fei Mi, Xiaoyu Lin, Boi Faltings
-
+This is our implementation for the paper:  
+[ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Session-based Recommendation](https://arxiv.org/abs/2007.12000)  
+Author: Fei Mi*, Xiaoyu Lin*, Boi Faltings  
 Please cite our paper if you use the code or datasets.
 
-## Table of Contents
-
+## Table of Contents  
 - [Background](#background)
 - [Requirements](#requirements)
 - [Dataset and Pre-processing](#dataset-and-pre-processing)
