@@ -228,7 +228,6 @@ def generating_txt(time_fraction, sess_end, args):
                     item_set.add(itemId)
                 else:
                     file_test.write('%d %d\n' % (userId, itemId))
-        print(len(item_set))
 
 
 if __name__ == '__main__':
