@@ -111,17 +111,6 @@ class ADER():
     def set_vanilla_loss(self):
         self.train_op = self.optimizer.minimize(self.loss, global_step=self.global_step)
 
-    def update_ewc_loss(self, ewc_lambda):
-        """
-        Update loss to EWC loss
-        """
-        self.ewc_loss = self.loss
-        for v in range(len(self.variables)):
-            self.ewc_loss += (ewc_lambda / 2.0) * \
-                             tf.reduce_sum(tf.multiply(self.F_accum[v].astype(np.float32),
-                                                       tf.square(self.variables[v] - self.variables_prev[v])))
-        self.train_op = self.optimizer.minimize(self.ewc_loss, global_step=self.global_step)
-
     def update_exemplar_loss(self, lambda_):
         """
         Update exemplar loss
@@ -154,50 +143,6 @@ class ADER():
             self.exemp_loss += lambda_ * tf.reduce_mean(
                 tf.nn.softmax_cross_entropy_with_logits(labels=exemplar_labels, logits=exemplar_logits))
         self.train_op = self.optimizer.minimize(self.exemp_loss, global_step=self.global_step)
-
-    def compute_fisher(self, sess, data, batch_size, max_item, dropout_rate):
-        """
-        Compute Fisher information for each parameter
-        :param sess: TensorFlow session
-        :param data: selected data to compute fisher
-        :param batch_size: batch size to compute fisher
-        :param max_item: current period item number
-        :param dropout_rate: dropout_rate
-        """
-        # initialize Fisher information for most recent task
-        self.F_accum = []
-        for v in range(len(self.variables)):
-            self.F_accum.append(np.zeros(self.variables[v].get_shape().as_list()))
-
-        # select random input session
-        fisher_sampler = Sampler(self.args, [], batch_size=batch_size)
-        fisher_sampler.prepare_data()
-        fisher_sampler.add_exemplar(data)
-        fisher_sampler.shuffle_data()
-        batch_num = fisher_sampler.batch_num
-        for _ in tqdm.tqdm(range(batch_num), desc='Computing fisher', ncols=70, leave=False):
-            seq, pos = fisher_sampler.sampler()
-            for i in range(len(seq)):
-                # compute first-order derivatives
-                input_seq = seq[i].reshape((1, -1))
-                input_pos = pos[i]
-                ders = sess.run(self.gradient,
-                                feed_dict={self.input_seq: input_seq,
-                                           self.pos: input_pos,
-                                           self.max_item: max_item,
-                                           self.is_training: False,
-                                           self.dropout_rate: dropout_rate})
-                slice = ders[1]
-                dense = np.zeros(slice.dense_shape)
-                for t in range(len(slice.indices)):
-                    dense[slice.indices[t]] = slice.values[t]
-                ders[1] = dense
-                # square the derivatives and add to total
-                for v in range(len(self.F_accum)):
-                    self.F_accum[v] += np.square(ders[v])
-        # divide totals by number of samples
-        for v in range(len(self.F_accum)):
-            self.F_accum[v] /= len(data)
 
     def predict(self, sess, seq, item_idx):
         """
