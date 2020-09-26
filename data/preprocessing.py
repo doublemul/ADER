@@ -91,7 +91,7 @@ def short_remove(reformed_data, args):
         sess_end = generate_sess_end_map(sess_end, userId, time)
 
     # if yoochoose dataset, choose a most recent fraction of entire dataset
-    if args.yoochoose_select and args.dataset == 'yoochoose-clicks.dat':
+    if args.yoochoose_select < 1.0 and args.dataset == 'yoochoose-clicks.dat':
         max_time = max(map(lambda x: x[2], removed_data))
         if args.test_fraction == 'day':
             test_threshold = 86400
@@ -142,6 +142,7 @@ def time_partition(removed_data, session_end, args):
                 raise ValueError('invalid time fraction')
             period_threshold = np.sort(period_threshold)
             period_threshold = period_threshold[-17:]
+            print(period_threshold)
 
         elif args.dataset == 'yoochoose-clicks.dat':
             # for YOOCHOOSE, choose the earliest 17 fraction
@@ -154,6 +155,7 @@ def time_partition(removed_data, session_end, args):
             period_threshold = np.sort(period_threshold)
             period_threshold = period_threshold[1:]
             period_threshold = period_threshold[:17]
+            print(period_threshold)
 
         for [sessId, itemId, time] in removed_data:
             # find period of each action
@@ -253,7 +255,7 @@ if __name__ == '__main__':
     if args.dataset.split('.')[0] == 'yoochoose-clicks':
         dataset_name = 'YOOCHOOSE'
     elif args.dataset.split('.')[0] == 'train-item-views':
-        dataset_name = 'DIGINETICA-test'
+        dataset_name = 'DIGINETICA'
     if args.is_time_fraction:
         dataset_name = dataset_name
     else:
