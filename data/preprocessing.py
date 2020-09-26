@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # @Project      : ADER
-# @File         : DataPreprocessing.py
+# @File         : preprocessing.py
 # @Description  :
 import argparse
 import os
-from datetime import datetime
 from data.util import *
 
 
@@ -233,7 +232,7 @@ def generating_txt(time_fraction, sess_end, args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default='train-item-views.csv', type=str)  #  or 'yoochoose-clicks.dat'
+    parser.add_argument('--dataset', default='train-item-views.csv', type=str)  # or 'yoochoose-clicks.dat'
     parser.add_argument('--is_time_fraction', default=True, type=str2bool)  # split into different time fraction or not
     parser.add_argument('--test_fraction', default='week', type=str)  # 'day' or 'week'
     parser.add_argument('--threshold_sess', default=1, type=int)  # minimum number of appearance time of item -1
@@ -254,7 +253,7 @@ if __name__ == '__main__':
     if args.dataset.split('.')[0] == 'yoochoose-clicks':
         dataset_name = 'YOOCHOOSE'
     elif args.dataset.split('.')[0] == 'train-item-views':
-        dataset_name = 'DIGINETICA'
+        dataset_name = 'DIGINETICA-test'
     if args.is_time_fraction:
         dataset_name = dataset_name
     else:
@@ -271,10 +270,5 @@ if __name__ == '__main__':
 
     # generate final txt file
     generating_txt(time_fraction, sess_end, args)
-
-    # plot statistics
-    # if args.is_time_fraction:
-    #     plot_stat(time_fraction)
-    # plot_item(removed_data)
 
     print(args.dataset + ' finish!')
