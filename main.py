@@ -105,8 +105,6 @@ if __name__ == '__main__':
     # distillation
     parser.add_argument('--use_distillation', default=True, type=str2bool)  # if true, add distillation loss
     parser.add_argument('--disable_m', default=False, type=str2bool)  # if true, fix the number of exemplar per item
-    # ewc
-    parser.add_argument('--use_ewc', default=False, type=str2bool)  # if true, add elastic weight consolidation
     # data parameter
     parser.add_argument('--is_joint', default=False, type=str2bool)  # if true, use all previous data
     parser.add_argument('--remove_item', default=True,
@@ -188,7 +186,7 @@ if __name__ == '__main__':
         test_sess, test_size, test_item_set = dataloader.evaluate_loader(period)
         max_item = dataloader.max_item()
         # exemplar
-        if (args.use_exemplar or args.use_ewc) and period > 1:
+        if args.use_exemplar and period > 1:
             train_exemplar_data_logits = load_exemplars('train', fast_exemplar)
             train_exemplar_size = len(train_exemplar_data_logits)
             train_exemplar_subseq = np.array(train_exemplar_data_logits)[:, 0].tolist()
@@ -196,7 +194,7 @@ if __name__ == '__main__':
             train_exemplar_subseq = None
 
         # Set loss
-        if period > 1 and args.use_exemplar and not args.use_ewc:
+        if period > 1 and args.use_exemplar:
             # add distillation loss
             # find lambda for current cycle
             new_item = max_item - item_num_prev
@@ -216,11 +214,7 @@ if __name__ == '__main__':
             exemplar_samplar.add_full_exemplar(train_exemplar_data_logits)
             exemplar_samplar.shuffle_data()
         else:
-            # add ewc loss
-            if args.use_ewc and period > 1:
-                model.update_ewc_loss(ewc_lambda=args.lambda_)
-            else:
-                model.set_vanilla_loss()
+            model.set_vanilla_loss()
             train_sampler.shuffle_data()
             batch_num = train_sampler.batch_num
 
@@ -244,7 +238,7 @@ if __name__ == '__main__':
                     # load train batch
                     seq, pos = train_sampler.sampler()
 
-                    if period > 1 and args.use_exemplar and not args.use_ewc:
+                    if period > 1 and args.use_exemplar:
                         ex_seq, ex_pos, logits = exemplar_samplar.exemplar_sampler()
                         seq = seq + ex_seq
                         if not args.use_distillation:
@@ -274,18 +268,6 @@ if __name__ == '__main__':
                                                   model.max_item: max_item,
                                                   model.dropout_rate: args.dropout_rate,
                                                   model.lr: lr})
-                if period > 1 and args.use_ewc:
-                    # if use ewc, update saved variables and fisher for each epoch
-                    loss, ewc = sess.run([model.loss, model.ewc_loss], {model.input_seq: seq,
-                                                                        model.pos: pos,
-                                                                        model.is_training: True,
-                                                                        model.max_item: max_item,
-                                                                        model.dropout_rate: args.dropout_rate,
-                                                                        model.lr: lr})
-                    print('loss=%.4e, ewc loss=%.4e' % (loss, ewc - loss))
-                    model.variables_prev = sess.run(model.variables)
-                    random_exemplar = random.sample(train_exemplar_subseq, min(len(train_exemplar_subseq), 1000))
-                    model.compute_fisher(sess, random_exemplar, 50, max_item, args.dropout_rate)
 
                 # validate performance
                 valid_evaluator = Evaluator(args, [], max_item, 'valid', model, sess, logs)
@@ -331,13 +313,6 @@ if __name__ == '__main__':
                 fast_exemplar = train_exemplar.exemplars
                 # train_exemplar.save('train')
                 del train_exemplar
-
-                # if use ewc method, calculate fisher and save variable
-                if args.use_ewc:
-                    train_exemplar_subseq = np.array(load_exemplars('train', fast_exemplar))[:, 0].tolist()
-                    model.variables_prev = sess.run(model.variables)
-                    random_exemplar = random.sample(train_exemplar_subseq, min(len(train_exemplar_subseq), 1000))
-                    model.compute_fisher(sess, random_exemplar, 50, max_item, args.dropout_rate)
 
     print('Total time: %.2f minutes.' % ((time.time() - t_start) / 60.0))
     logs.write('Total time: %.2f minutes\nDone' % ((time.time() - t_start) / 60.0))
