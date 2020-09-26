@@ -7,16 +7,14 @@ This is our implementation for the paper:
 [ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Session-based Recommendation](https://dl.acm.org/doi/abs/10.1145/3383313.3412218)  
 Author: Fei Mi*, Xiaoyu Lin*, Boi Faltings  
 Please cite our paper if you use the code or datasets:
-    ```
-    @inproceedings{Mi2020ADER,
-    author = {Mi, Fei and Lin, Xiaoyu and Faltings, Boi},  
-    title = {ADER: Adaptively Distilled Exemplar Replay Towards Continual Learning for Session-Based Recommendation},  
-    year = {2020},  
-    booktitle = {Fourteenth ACM Conference on Recommender Systems},  
-    pages = {408–413},  
-    series = {RecSys '20}  
-    }
-    ```
+>@inproceedings{Mi2020ADER,
+>author = {Mi, Fei and Lin, Xiaoyu and Faltings, Boi},
+>title = {ADER: Adaptively Distilled Exemplar Replay Towards Continual Learning for Session-Based Recommendation},
+>year = {2020},
+>booktitle = {Fourteenth ACM Conference on Recommender Systems},
+>pages = {408–413},
+>series = {RecSys '20}
+>}
 ## Table of Contents  
 - [Background](#background)
 - [Requirements](#requirements)
