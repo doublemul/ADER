@@ -9,12 +9,12 @@ Author: Fei Mi*, Xiaoyu Lin*, Boi Faltings
 Please cite our paper if you use the code or datasets:
     ```
     @inproceedings{Mi2020ADER,
-    author = {Mi, Fei and Lin, Xiaoyu and Faltings, Boi},
-    title = {ADER: Adaptively Distilled Exemplar Replay Towards Continual Learning for Session-Based Recommendation},
-    year = {2020},
-    booktitle = {Fourteenth ACM Conference on Recommender Systems},
-    pages = {408–413},
-    series = {RecSys '20}
+    author = {Mi, Fei and Lin, Xiaoyu and Faltings, Boi},  
+    title = {ADER: Adaptively Distilled Exemplar Replay Towards Continual Learning for Session-Based Recommendation},  
+    year = {2020},  
+    booktitle = {Fourteenth ACM Conference on Recommender Systems},  
+    pages = {408–413},  
+    series = {RecSys '20}  
     }
     ```
 ## Table of Contents  
