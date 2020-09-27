@@ -1,6 +1,6 @@
 # ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Session-based Recommendation
 **EPFL | [Artificial Intelligence Laboratory (LIA)](https://lia.epfl.ch/) | Semester Project (Spring 2020)**  
-**RecSys 2020 | Short paper**
+**[RecSys 2020](https://recsys.acm.org/recsys20/) | Best Short Paper**
 
 ## About
 This is our implementation for the paper:  
@@ -58,5 +58,6 @@ python main.py --dataset=YOOCHOOSE --lambda_=1.0 --batch_size=512 --test_batch=6
 ADER significantly outperforms other methods. More importantly, it even outperforms Joint. This result empirically
 reveals that ADER is a promising solution for the continual recommendation setting by effectively preserving user
 preference patterns learned before.
-![results](results.svg)
-
+<p align="center">
+  <img src="results.svg" width="800px"/>
+</p>
