@@ -85,9 +85,6 @@ class ADER():
 
         # find representation
         self.rep = self.seq[:, -1, :]
-        # save variables for EWC
-        self.variables = tf.get_collection(tf.GraphKeys.VARIABLES)
-        # del self.variables[1]
 
         # define loss
         seq_emb = tf.reshape(self.rep, [tf.shape(self.input_seq)[0], args.hidden_units])
@@ -96,7 +93,6 @@ class ADER():
         item_emb = tf.nn.embedding_lookup(item_emb_table, tf.range(1, self.max_item + 1))
         self.logits = tf.matmul(seq_emb, tf.transpose(item_emb))
         self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=self.labels, logits=self.logits))
-        self.gradient = tf.gradients(self.loss, self.variables)
 
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
@@ -116,10 +112,7 @@ class ADER():
         Update exemplar loss
         """
         # fine the number of train data from current cycle
-        if not self.args.use_distillation:
-            train_size = tf.shape(self.input_seq)[0] - tf.shape(self.exemplar_pos)[0]
-        else:
-            train_size = tf.shape(self.input_seq)[0] - tf.shape(self.exemplar_logits)[0]
+        train_size = tf.shape(self.input_seq)[0] - tf.shape(self.exemplar_logits)[0]
 
         # train data
         train_logits = self.logits[:train_size]
@@ -129,19 +122,12 @@ class ADER():
 
         # exemplar data
         exemplar_logits = self.logits[train_size:]
-        if not self.args.use_distillation:
-            # one-hot label
-            exemplar_logits = exemplar_logits[:, :self.max_item_pre]
-            indices = self.exemplar_pos - 1
-            exemplar_labels = tf.one_hot(indices, self.max_item_pre)
-            self.exemp_loss += lambda_ * tf.reduce_mean(
-                tf.nn.softmax_cross_entropy_with_logits(labels=exemplar_labels, logits=exemplar_logits))
-        else:
-            # logits-matching
-            exemplar_logits = exemplar_logits[:, :tf.shape(self.exemplar_logits)[1]]
-            exemplar_labels = tf.nn.softmax(self.exemplar_logits)
-            self.exemp_loss += lambda_ * tf.reduce_mean(
-                tf.nn.softmax_cross_entropy_with_logits(labels=exemplar_labels, logits=exemplar_logits))
+
+        # logits-matching
+        exemplar_logits = exemplar_logits[:, :tf.shape(self.exemplar_logits)[1]]
+        exemplar_labels = tf.nn.softmax(self.exemplar_logits)
+        self.exemp_loss += lambda_ * tf.reduce_mean(
+            tf.nn.softmax_cross_entropy_with_logits(labels=exemplar_labels, logits=exemplar_logits))
         self.train_op = self.optimizer.minimize(self.exemp_loss, global_step=self.global_step)
 
     def predict(self, sess, seq, item_idx):

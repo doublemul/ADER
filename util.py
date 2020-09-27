@@ -25,11 +25,8 @@ class DataLoader:
         self.logs = logs
         self.args = args
         self.item_set = set()
-        if args.is_joint:
-            self.path = os.path.join('..', '..', 'data', '%s_joint' % args.dataset)
-        else:
-            self.path = os.path.join('..', '..', 'data', args.dataset)
-        self.is_remove_item = args.remove_item
+        self.path = os.path.join('..', '..', 'data', args.dataset)
+        self.is_remove_item = True
         self.item_counter = np.zeros(item_num)
 
     def train_loader(self, period=None):
@@ -40,10 +37,7 @@ class DataLoader:
         """
         Sessions = defaultdict(list)
         train_item_set = set()
-        if self.args.is_joint:
-            file_name = '/train.txt'
-        else:
-            file_name = '/period_%d.txt' % period
+        file_name = '/period_%d.txt' % period
         with open(self.path + file_name, 'r') as f:
             for line in f:
                 sessId, itemId = line.rstrip().split(' ')
@@ -82,10 +76,7 @@ class DataLoader:
         removed_num = 0
         total_num = 0
         test_item_set = set()
-        if self.args.is_joint:
-            file_name = '/test.txt'
-        else:
-            file_name = '/period_%d.txt' % period
+        file_name = '/period_%d.txt' % period
         with open(self.path + file_name, 'r') as f:
             for line in f:
                 total_num += 1
@@ -437,8 +428,6 @@ class ExemplarGenerator:
         self.exemplars = defaultdict(list)
         if history_item_count is not None:
             self.item_count = history_item_count
-        if self.args.disable_m:
-            self.item_count = np.ones_like(self.item_count)
         item_prob = self.item_count / self.item_count.sum()
         item_count = np.random.multinomial(n=self.m, pvals=item_prob, size=1)[0]
         item_count = np.int32(item_count)

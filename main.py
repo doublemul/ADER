@@ -96,22 +96,10 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', default='DIGINETICA', type=str)  # name of dataset 'DIGINETICA' or 'YOOCHOOSE'
     parser.add_argument('--save_dir', default='ADER', type=str)  # name of dictionary save the results
     # exemplar
-    parser.add_argument('--use_exemplar', default=True, type=str2bool)  # use exemplar or not
     parser.add_argument('--exemplar_size', default=30000, type=int)  # size of exemplars
-    parser.add_argument('--selection', default=1, type=int)  # exemplar selection criterion random:0 herding:1 loss:2
     parser.add_argument('--lambda_', default=0.8, type=float)  # base adaptive weight
-    parser.add_argument('--fixed_lambda', default=None, type=float)  # if float, lambda is fixed
-    parser.add_argument('--use_history', default=False, type=str2bool)  # use all past data to generate M
-    # distillation
-    parser.add_argument('--use_distillation', default=True, type=str2bool)  # if true, add distillation loss
-    parser.add_argument('--disable_m', default=False, type=str2bool)  # if true, fix the number of exemplar per item
-    # data parameter
-    parser.add_argument('--is_joint', default=False, type=str2bool)  # if true, use all previous data
-    parser.add_argument('--remove_item', default=True,
-                        type=str2bool)  # if true, remove the item in test set but not appear in train set
     # early stop parameter
-    parser.add_argument('--stop', default=5,
-                        type=int)  # stop training if the performance not improve for consecutive 5 epochs
+    parser.add_argument('--stop', default=5, type=int)  # number of epoch for early stop
     # batch size and device
     parser.add_argument('--num_epochs', default=100, type=int)
     parser.add_argument('--batch_size', default=256, type=int)
@@ -178,7 +166,6 @@ if __name__ == '__main__':
         # Prepare data
         # load train data
         train_sess, train_item_set = dataloader.train_loader(period - 1)
-        history_item_count = dataloader.get_item_counter() if args.use_history else None
         train_sampler = Sampler(args, train_sess, args.batch_size)
         train_sampler.prepare_data()
         valid_subseq, train_subseq = train_sampler.split_data(valid_portion=0.1, return_train=True)
@@ -186,7 +173,7 @@ if __name__ == '__main__':
         test_sess, test_size, test_item_set = dataloader.evaluate_loader(period)
         max_item = dataloader.max_item()
         # exemplar
-        if args.use_exemplar and period > 1:
+        if period > 1:
             train_exemplar_data_logits = load_exemplars('train', fast_exemplar)
             train_exemplar_size = len(train_exemplar_data_logits)
             train_exemplar_subseq = np.array(train_exemplar_data_logits)[:, 0].tolist()
@@ -194,14 +181,11 @@ if __name__ == '__main__':
             train_exemplar_subseq = None
 
         # Set loss
-        if period > 1 and args.use_exemplar:
-            # add distillation loss
+        if period > 1:
             # find lambda for current cycle
             new_item = max_item - item_num_prev
             train_size = train_sampler.data_size()
             lambda_ = args.lambda_ * math.sqrt((item_num_prev / max_item) * (train_exemplar_size / train_size))
-            if args.fixed_lambda is not None:
-                lambda_ = args.fixed_lambda
             print('lambda=%f' % lambda_)
             logs.write('lambda=%.6f\n' % lambda_)
             model.update_exemplar_loss(lambda_=lambda_)
@@ -223,45 +207,30 @@ if __name__ == '__main__':
 
             # initialize variables or reload from previous period
             saver = tf.train.Saver(max_to_keep=1)
-            if period > 1:
-                # load model trained from previous cycle
-                saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
-            else:
-                sess.run(tf.global_variables_initializer())
+            saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch)) \
+                if period > 1 else sess.run(tf.global_variables_initializer())
 
             # train
             for epoch in range(1, args.num_epochs + 1):
-
                 # train each epoch
                 for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
                               desc='Training epoch %d/%d' % (epoch, args.num_epochs)):
                     # load train batch
                     seq, pos = train_sampler.sampler()
 
-                    if period > 1 and args.use_exemplar:
+                    if period > 1:
                         ex_seq, ex_pos, logits = exemplar_samplar.exemplar_sampler()
                         seq = seq + ex_seq
-                        if not args.use_distillation:
-                            # exemplar using one-hot label
-                            sess.run(model.train_op, {model.input_seq: seq,
-                                                      model.pos: pos,
-                                                      model.is_training: True,
-                                                      model.max_item: max_item,
-                                                      model.exemplar_pos: ex_pos,
-                                                      model.dropout_rate: args.dropout_rate,
-                                                      model.lr: lr,
-                                                      model.max_item_pre: max_item})
-                        else:
-                            # exemplar using logistic-matching label
-                            sess.run(model.train_op, {model.input_seq: seq,
-                                                      model.pos: pos,
-                                                      model.is_training: True,
-                                                      model.max_item: max_item,
-                                                      model.exemplar_logits: logits,
-                                                      model.dropout_rate: args.dropout_rate,
-                                                      model.lr: lr})
+                        # exemplar using logistic-matching label
+                        sess.run(model.train_op, {model.input_seq: seq,
+                                                  model.pos: pos,
+                                                  model.is_training: True,
+                                                  model.max_item: max_item,
+                                                  model.exemplar_logits: logits,
+                                                  model.dropout_rate: args.dropout_rate,
+                                                  model.lr: lr})
                     else:
-                        # without using exemplar
+                        # without using exemplar for initial cycle
                         sess.run(model.train_op, {model.input_seq: seq,
                                                   model.pos: pos,
                                                   model.is_training: True,
@@ -290,29 +259,18 @@ if __name__ == '__main__':
             item_num_prev = max_item
             prev_item_set = train_item_set
             saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
+
             # test performance
-            if period < periods[-1]:
-                test_evaluator = Evaluator(args, test_sess, max_item, 'test', model, sess, logs)
-                test_evaluator.evaluate(best_epoch)
+            test_evaluator = Evaluator(args, test_sess, max_item, 'test', model, sess, logs)
+            test_evaluator.evaluate(best_epoch)
 
             # save exemplars
-            if args.use_exemplar:
-
-                train_exemplar = ExemplarGenerator(args, args.exemplar_size, train_sess, max_item, logs)
-                train_exemplar.add_exemplar(exemplar=train_exemplar_subseq,
-                                            # item_set=train_item_set.difference(test_item_set)
-                                            )
-                if args.selection == 0:
-                    train_exemplar.randomly_selection(sess, model, history_item_count)
-                elif args.selection == 1:
-                    train_exemplar.herding_selection(sess, model, history_item_count)
-                elif args.selection == 2:
-                    train_exemplar.loss_selection(sess, model, history_item_count)
-                else:
-                    raise ValueError('Invalid exemplar select method')
-                fast_exemplar = train_exemplar.exemplars
-                # train_exemplar.save('train')
-                del train_exemplar
+            train_exemplar = ExemplarGenerator(args, args.exemplar_size, train_sess, max_item, logs)
+            train_exemplar.add_exemplar(exemplar=train_exemplar_subseq)
+            train_exemplar.herding_selection(sess, model)
+            fast_exemplar = train_exemplar.exemplars
+            # train_exemplar.save('train')
+            del train_exemplar
 
     print('Total time: %.2f minutes.' % ((time.time() - t_start) / 60.0))
     logs.write('Total time: %.2f minutes\nDone' % ((time.time() - t_start) / 60.0))
