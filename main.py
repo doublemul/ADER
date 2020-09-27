@@ -126,10 +126,6 @@ if __name__ == '__main__':
     logs.write(' '.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
 
     # For reproducibility
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device_num)
-    os.environ['TF_DETERMINISTIC_OPS'] = '1'
-    os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
-    patch()
     np.random.seed(args.random_seed)
     random.seed(args.random_seed)
     tf.set_random_seed(args.random_seed)

@@ -111,10 +111,10 @@ class ADER():
         """
         Update exemplar loss
         """
-        # fine the number of train data from current cycle
+        # find the number of train data from current cycle
         train_size = tf.shape(self.input_seq)[0] - tf.shape(self.exemplar_logits)[0]
 
-        # train data
+        # training data
         train_logits = self.logits[:train_size]
         train_labels = self.labels[:train_size]
         self.exemp_loss = tf.reduce_mean(
