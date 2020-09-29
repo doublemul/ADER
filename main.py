@@ -179,8 +179,6 @@ if __name__ == '__main__':
             new_item = max_item - item_num_prev
             train_size = train_sampler.data_size()
             lambda_ = args.lambda_ * math.sqrt((item_num_prev / max_item) * (train_exemplar_size / train_size))
-            print('lambda=%f' % lambda_)
-            logs.write('lambda=%.6f\n' % lambda_)
             model.update_exemplar_loss(lambda_=lambda_)
             # prepare exemplar sampler
             train_sampler.shuffle_data()

@@ -59,13 +59,6 @@ class DataLoader:
 
         return sessions, train_item_set
 
-    def get_item_counter(self):
-        """
-        This method return numbers of
-        :return: list of cumulative numbers with length of maximum item
-        """
-        return self.item_counter
-
     def evaluate_loader(self, period=None):
         """
         This method load and return test or valid data according to mode of specific period

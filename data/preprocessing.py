@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 # @Project      : ADER
 # @File         : preprocessing.py
-# @Description  :
+
 import argparse
 import os
-from data.util import *
+from util import *
 
 
 def str2bool(v):
@@ -34,9 +34,7 @@ def read_data(dataset_path):
     """
     # load data according to file extension name
     filename_extension = dataset_path.split('/')[-1].split('.')[-1]
-    if filename_extension == 'gz':
-        sess_map, item_map, reformed_data = read_gz(dataset_path)
-    elif filename_extension == 'dat':
+    if filename_extension == 'dat':
         sess_map, item_map, reformed_data = read_dat(dataset_path)
     elif filename_extension == 'csv':
         sess_map, item_map, reformed_data = read_csv(dataset_path)
@@ -142,7 +140,6 @@ def time_partition(removed_data, session_end, args):
                 raise ValueError('invalid time fraction')
             period_threshold = np.sort(period_threshold)
             period_threshold = period_threshold[-17:]
-            print(period_threshold)
 
         elif args.dataset == 'yoochoose-clicks.dat':
             # for YOOCHOOSE, choose the earliest 17 fraction
@@ -155,7 +152,6 @@ def time_partition(removed_data, session_end, args):
             period_threshold = np.sort(period_threshold)
             period_threshold = period_threshold[1:]
             period_threshold = period_threshold[:17]
-            print(period_threshold)
 
         for [sessId, itemId, time] in removed_data:
             # find period of each action
