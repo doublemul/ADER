@@ -36,11 +36,11 @@ The pre-processed data used in our paper is uploaded in `data/DIGINETICA` and `d
 Download `train-item-views.csv` or `yoochoose-clicks.dat` into folder `data\dataset`.<br/>
 For DIGINETICA, run from the `data` folder of the project:
 ```
-python DataPreprocessing.py
+python preprocessing.py
 ```
 For YOOCHOOSE, run from the `data` folder of the project:
 ```
-python DataPreprocessing.py --dataset=yoochoose-clicks.dat --test_fraction=day
+python preprocessing.py --dataset=yoochoose-clicks.dat --test_fraction=day
 ```
 
 ## Model Training
