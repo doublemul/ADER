@@ -3,7 +3,7 @@
 '''
 June 2017 by kyubyong park. 
 kbpark.linguist@gmail.com.
-https://www.github.com/kyubyong/transformer
+https://www.github.com/kyubyong/transformer 
 '''
 
 from __future__ import print_function
