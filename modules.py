@@ -9,8 +9,6 @@ https://www.github.com/kyubyong/transformer
 from __future__ import print_function
 import tensorflow.compat.v1 as tf
 import numpy as np
-import pickle
-import os
 
 
 def positional_encoding(dim, sentence_length, dtype=tf.float32):

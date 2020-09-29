@@ -3,7 +3,7 @@
 # @Project      : ADER
 # @File         : main.py
 # @Description  : main file for training ADER
-# @Author       : Xiaoyu Lin, Fei Mi, Boi Faltings
+# @Author       : Xiaoyu Lin
 import argparse
 import os
 import math
@@ -13,7 +13,6 @@ from tqdm import tqdm
 from util import *
 import gc
 import time
-from tfdeterminism import patch
 
 
 def str2bool(v):
@@ -69,20 +68,20 @@ def load_exemplars(mode, fast_exemplar=None):
             exemplars.extend([i for i in item if i])
     return exemplars
 
-
-def split_data(data, choice_num):
-    """
-    Split the data into two parts and the number of data in second part is given by choice_num
-    :param data: original data
-    :param choice_num: the number of data in second part
-    :return: two split data parts
-    """
-    data_size = len(data)
-    sidx = np.arange(data_size, dtype='int32')
-    np.random.shuffle(sidx)
-    first_part = [data[s] for s in sidx[choice_num:]]
-    second_part = [data[s] for s in sidx[:choice_num]]
-    return first_part, second_part
+#
+# def split_data(data, choice_num):
+#     """
+#     Split the data into two parts and the number of data in second part is given by choice_num
+#     :param data: original data
+#     :param choice_num: the number of data in second part
+#     :return: two split data parts
+#     """
+#     data_size = len(data)
+#     sidx = np.arange(data_size, dtype='int32')
+#     np.random.shuffle(sidx)
+#     first_part = [data[s] for s in sidx[choice_num:]]
+#     second_part = [data[s] for s in sidx[:choice_num]]
+#     return first_part, second_part
 
 
 if __name__ == '__main__':
@@ -137,9 +136,9 @@ if __name__ == '__main__':
 
     # Build model
     if args.dataset == 'DIGINETICA':
-        item_num = 43136
+        item_num = 43136    # number of items in DIGINETICA
     elif args.dataset == 'YOOCHOOSE':
-        item_num = 25958
+        item_num = 25958    # number of items in YOOCHOOSE
     else:
         raise ValueError('Invalid dataset name')
     with tf.device('/gpu:%d' % args.device_num):
@@ -155,8 +154,6 @@ if __name__ == '__main__':
 
         print('Period %d:' % period)
         logs.write('Period %d:\n' % period)
-        lr = args.lr
-        # record performance for early stop
         best_performance, performance = 0, 0
 
         # Prepare data
@@ -165,7 +162,7 @@ if __name__ == '__main__':
         train_sampler = Sampler(args, train_sess, args.batch_size)
         train_sampler.prepare_data()
         valid_subseq, train_subseq = train_sampler.split_data(valid_portion=0.1, return_train=True)
-        # test data
+        # load test data
         test_sess, test_size, test_item_set = dataloader.evaluate_loader(period)
         max_item = dataloader.max_item()
         # exemplar
@@ -207,6 +204,7 @@ if __name__ == '__main__':
                 if period > 1 else sess.run(tf.global_variables_initializer())
 
             # train
+            best_epoch = 1
             for epoch in range(1, args.num_epochs + 1):
                 # train each epoch
                 for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
@@ -224,7 +222,7 @@ if __name__ == '__main__':
                                                   model.max_item: max_item,
                                                   model.exemplar_logits: logits,
                                                   model.dropout_rate: args.dropout_rate,
-                                                  model.lr: lr})
+                                                  model.lr: args.lr})
                     else:
                         # without using exemplar for initial cycle
                         sess.run(model.train_op, {model.input_seq: seq,
@@ -232,7 +230,7 @@ if __name__ == '__main__':
                                                   model.is_training: True,
                                                   model.max_item: max_item,
                                                   model.dropout_rate: args.dropout_rate,
-                                                  model.lr: lr})
+                                                  model.lr: args.lr})
 
                 # validate performance
                 valid_evaluator = Evaluator(args, [], max_item, 'valid', model, sess, logs)
@@ -240,23 +238,18 @@ if __name__ == '__main__':
                 performance = valid_evaluator.results()[1]
 
                 # early stop
-                best_epoch = epoch
                 if best_performance >= performance:
                     stop_counter += 1
                     if stop_counter >= args.stop:
-                        best_epoch = epoch - args.stop
                         break
                 else:
                     stop_counter = 0
+                    best_epoch = epoch
                     best_performance = performance
                     saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
 
-            # save current meta-data for next cycle
-            item_num_prev = max_item
-            prev_item_set = train_item_set
-            saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
-
             # test performance
+            saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
             test_evaluator = Evaluator(args, test_sess, max_item, 'test', model, sess, logs)
             test_evaluator.evaluate(best_epoch)
 
@@ -268,7 +261,11 @@ if __name__ == '__main__':
             # train_exemplar.save('train')
             del train_exemplar
 
+            # save current meta-data for next cycle
+            item_num_prev = max_item
+            prev_item_set = train_item_set
+
     print('Total time: %.2f minutes.' % ((time.time() - t_start) / 60.0))
-    logs.write('Total time: %.2f minutes\nDone' % ((time.time() - t_start) / 60.0))
+    logs.write('Total time: %.2f minutes\nDone.' % ((time.time() - t_start) / 60.0))
     logs.close()
-    print('Done')
+    print('Done.')

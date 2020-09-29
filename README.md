@@ -5,8 +5,10 @@
 ## About
 This is our implementation for the paper:  
 [ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Session-based Recommendation](https://dl.acm.org/doi/abs/10.1145/3383313.3412218)  
-Author: Fei Mi*, Xiaoyu Lin*, Boi Faltings  
-Please cite our paper if you use the code or datasets.
+**Authors**: Fei Mi, Xiaoyu Lin, and Boi Faltings  
+*First two authors have similar contributions.*  
+Please cite our paper if you use the code or datasets.  
+This is also a semester project completed by Xiaoyu Lin and supervised by Fei Mi and Prof. Boi Faltings.  
 
 ## Table of Contents  
 - [Background](#background)
@@ -14,13 +16,14 @@ Please cite our paper if you use the code or datasets.
 - [Dataset and Pre-processing](#dataset-and-pre-processing)
 - [Model Training](#model-training)
 - [Results](#results)
+- [Citation](#citation)
 
 ## Background
 Although session-based recommenders have achieved significant improvements due to some new techniques like recurrent neural network and attention, they train the model only using entire data or most recent fraction. The growing concern about privacy prohibits recommenders keeping long-term user’s browsing history. On the other hand, more recent data is more useful for recommenders, but how to select the last fraction of data from the entire dataset is a problem in this static scenario. We address those problems by employing existing recommender in an incremental learning scenario and propose a framework called Adaptively Distilled Exemplar Replay (ADER) to balance the model’s ability to learn new data and catastrophic forgetting. It is based on a loss composed of a cross-entropy loss to learn the latest data and fine-tuned distillation loss to keep the knowledge gained from the previous data. We select and update a small exemplar set every period, and use it for distillation in the next period. We evaluate our framework on two benchmark datasets based on the self-attentive recommender. Our experimental results show that ADER outperforms state-of-the-art baselines. Furthermore, we also find ADER overcomes the model trained by the entire dataset, which demonstrates its advantages in removing long-term user data.
 
 ## Requirements
-Python 3.7, TensorFlow 2.1.0, and other common packages listed in `requirements.txt` or `requirements.yaml`.<br/>
-Install required environment: `conda create env -f requirement.yaml`<br/>
+Python 3.7, TensorFlow 2.1.0, and other common packages listed in `requirements.txt` or `requirements.yaml`  
+Install required environment: `conda create env -f requirement.yaml`  
 Activate required environment: `conda activate ader`
 
 ## Dataset and Pre-processing
@@ -61,3 +64,15 @@ preference patterns learned before.
 <p align="center">
   <img src="results.svg" width="666px"/>
 </p>
+
+## Citation
+
+    @inproceedings{mi2020ader,
+        author = {Mi, Fei and Lin, Xiaoyu and Faltings, Boi},
+        title = {ADER: Adaptively Distilled Exemplar Replay Towards Continual Learning for Session-Based Recommendation},
+        year = {2020},
+        booktitle = {Fourteenth ACM Conference on Recommender Systems},
+        pages = {408–413},
+        numpages = {6},
+        series = {RecSys '20}
+    }
