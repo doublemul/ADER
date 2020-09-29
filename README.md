@@ -59,5 +59,5 @@ ADER significantly outperforms other methods. More importantly, it even outperfo
 reveals that ADER is a promising solution for the continual recommendation setting by effectively preserving user
 preference patterns learned before.
 <p align="center">
-  <img src="results.svg" width="800px"/>
+  <img src="results.svg" width="666px"/>
 </p>
