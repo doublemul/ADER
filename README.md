@@ -74,7 +74,7 @@ python main.py --dataset=YOOCHOOSE --lambda_=1.0 --batch_size=512 --test_batch=6
 ```
 
 ## Baseline Methods and Ablation Study
-- We provide four baseline methods for comprehensive analysis, to test baseline methods, please run from 
+- We provide four baseline methods for comprehensive analysis. To test baseline methods, please run from 
 the root of the project:
     - *Finetune:* ``python main.py --finetune=True --save_dir=finetune``
     - *Dropout:* ``python main.py --dropout=True --save_dir=dropout``
