@@ -16,16 +16,15 @@ class DataLoader:
     """
     DataLoader object to load train, valid and test data from dataset.
     """
-    def __init__(self, args, item_num, logs):
+    def __init__(self, dataset, item_num, logs):
         """
-        :param args: args
+        :param dataset: dataset name
         :param item_num: all item number of entire dataset
         :param logs: logs
         """
         self.logs = logs
-        self.args = args
         self.item_set = set()
-        self.path = os.path.join('..', '..', 'data', args.dataset)
+        self.path = os.path.join('..', '..', 'data', dataset)
         self.is_remove_item = True
         self.item_counter = np.zeros(item_num)
 
@@ -68,7 +67,6 @@ class DataLoader:
         Sessions = defaultdict(list)
         removed_num = 0
         total_num = 0
-        test_item_set = set()
         file_name = '/period_%d.txt' % period
         with open(self.path + file_name, 'r') as f:
             for line in f:
@@ -82,7 +80,6 @@ class DataLoader:
                     continue
                 else:
                     self.item_set.add(itemId)
-                    test_item_set.add(itemId)
                 Sessions[sessId].append(itemId)
 
         if self.is_remove_item:
@@ -101,7 +98,7 @@ class DataLoader:
         sessions = list(Sessions.values())
         del Sessions
 
-        return sessions, total_num - len(sessions), test_item_set
+        return sessions
 
     def max_item(self):
         """
@@ -116,25 +113,33 @@ class Sampler:
     train.
     """
 
-    def __init__(self, args, data, batch_size):
+    def __init__(self, data, maxlen, batch_size, is_subseq=False):
         """
         :param args: args
         :param data: original data for sampling
         :param batch_size: size of one batch
         """
-        self.maxlen = args.maxlen
-        self.data = data
+        self.maxlen = maxlen
         self.batch_size = batch_size
 
-        self.prepared_data = []
         self.dataset_size = 0
-        self.batch_num = 0
-
         self.batch_counter = 0
         self.data_indices = []
 
-        self.SEED = args.random_seed
-        random.seed(args.random_seed)
+        self.prepared_data = []
+        if not is_subseq:
+            for session in data:
+                self.prepared_data.append(session)
+                length = len(session)
+                if length > 2:
+                    for t in range(1, length - 1):
+                        self.prepared_data.append(session[:-t])
+        else:
+            for session in data:
+                self.prepared_data.append(session)
+
+        self.data_indices = list(range(len(self.prepared_data)))
+        random.shuffle(self.data_indices)
 
     def label_generator(self, session, return_pos=True):
         """
@@ -157,28 +162,7 @@ class Sampler:
         else:
             return seq
 
-    def prepare_data(self):
-        """
-        Split original session into sub-sessions
-        """
-        self.prepared_data = []
-        for session in self.data:
-            self.prepared_data.append(session)
-            length = len(session)
-            if length > 2:
-                for t in range(1, length - 1):
-                    self.prepared_data.append(session[:-t])
-
     def add_exemplar(self, exemplar):
-        """
-        Only add exemplar data
-        :param exemplar: exemplar
-        """
-        if exemplar:
-            for session in exemplar:
-                self.prepared_data.append(session)
-
-    def add_full_exemplar(self, exemplar):
         """
         Add exemplar data and logits
         :param exemplar: exemplar data and logits
@@ -187,6 +171,9 @@ class Sampler:
         for session, logits in exemplar:
             self.prepared_data.append(session)
             self.logits.append(logits)
+
+        self.data_indices = list(range(len(self.prepared_data)))
+        random.shuffle(self.data_indices)
 
     def split_data(self, valid_portion, return_train=False):
         """
@@ -199,26 +186,19 @@ class Sampler:
         data_size = len(self.prepared_data)
         sidx = np.arange(data_size, dtype='int32')
         np.random.shuffle(sidx)
+
         n_train = int(np.round(data_size * (1. - valid_portion)))
         valid_data = [self.prepared_data[s] for s in sidx[n_train:]]
         train_data = [self.prepared_data[s] for s in sidx[:n_train]]
         self.prepared_data = train_data
 
+        self.data_indices = list(range(len(self.prepared_data)))
+        random.shuffle(self.data_indices)
+
         if return_train:
             return valid_data, train_data
         else:
             return valid_data
-
-    def shuffle_data(self):
-        """
-        Shuffle data
-        :return: batch number
-        """
-        self.dataset_size = len(self.prepared_data)
-        self.batch_num = math.ceil(self.dataset_size * 1.0 / self.batch_size)
-        self.batch_counter = 0
-        self.data_indices = list(range(self.dataset_size))
-        random.Random(self.SEED).shuffle(self.data_indices)
 
     def sampler(self):
         """
@@ -226,7 +206,7 @@ class Sampler:
         """
         one_batch = []
         for i in range(self.batch_size):
-            if (i + self.batch_counter * self.batch_size) < self.dataset_size:
+            if (i + self.batch_counter * self.batch_size) < len(self.prepared_data):
                 index = self.data_indices[i + self.batch_counter * self.batch_size]
                 session = self.prepared_data[index]
                 if len(session) <= 1:
@@ -236,9 +216,9 @@ class Sampler:
                 break
 
         self.batch_counter += 1
-        if self.batch_counter == self.batch_num:
+        if self.batch_counter == self.batch_num():
             self.batch_counter = 0
-            random.Random(self.SEED).shuffle(self.data_indices)
+            random.shuffle(self.data_indices)
 
         return zip(*one_batch)
 
@@ -248,7 +228,7 @@ class Sampler:
         """
         one_batch = []
         for i in range(self.batch_size):
-            if (i + self.batch_counter * self.batch_size) < self.dataset_size:
+            if (i + self.batch_counter * self.batch_size) < len(self.prepared_data):
                 index = self.data_indices[i + self.batch_counter * self.batch_size]
                 session = self.prepared_data[index]
                 if len(session) <= 1:
@@ -259,14 +239,17 @@ class Sampler:
                 break
 
         self.batch_counter += 1
-        if self.batch_counter == self.batch_num:
+        if self.batch_counter == self.batch_num():
             self.batch_counter = 0
-            random.Random(self.SEED).shuffle(self.data_indices)
+            random.shuffle(self.data_indices)
 
         return zip(*one_batch)
 
     def data_size(self):
         return len(self.prepared_data)
+
+    def batch_num(self):
+        return math.ceil(len(self.prepared_data) * 1.0 / self.batch_size)
 
 
 class Evaluator:
@@ -274,7 +257,7 @@ class Evaluator:
     This object evaluates performance on valid or test data.
     """
 
-    def __init__(self, args, data, max_item, mode, model, sess, logs):
+    def __init__(self, data, is_subseq, maxlen, batch_size, max_item, mode, model, sess, logs):
         """
         :param args: args
         :param data: data to evaluate, valid data or test data
@@ -284,7 +267,8 @@ class Evaluator:
         :param sess: tf session
         :param logs: logs
         """
-        self.args = args
+        self.maxlen = maxlen
+        self.batch_size = batch_size
         self.data = data
         self.max_item = max_item
         self.mode = mode
@@ -295,23 +279,19 @@ class Evaluator:
         self.ranks = []
         self.recall_20 = 0
         self.desc = 'Validating epoch ' if mode == 'valid' else 'Testing epoch '
+        self.evaluate_sampler = Sampler(data, maxlen, batch_size, is_subseq=is_subseq)
 
-    def evaluate(self, epoch, exemplar=None):
+    def evaluate(self, epoch):
         """
         This method only evaluate performance of predicted last item among all existing item.
         :param exemplar: valid exemplar from previous period
         :param epoch: current epoch
         """
         self.ranks = []
-
-        evaluate_sampler = Sampler(self.args, self.data, self.args.test_batch)
-        evaluate_sampler.prepare_data()
-        evaluate_sampler.add_exemplar(exemplar=exemplar)
-        evaluate_sampler.shuffle_data()
-        batch_num = evaluate_sampler.batch_num
+        batch_num = self.evaluate_sampler.batch_num()
         for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
                       desc=self.desc + str(epoch)):
-            seq, pos = evaluate_sampler.sampler()
+            seq, pos = self.evaluate_sampler.sampler()
             predictions = self.model.predict(self.sess, seq, list(range(1, self.max_item + 1)))
             ground_truth = pos
             rank = [pred[index - 1] for pred, index in zip(predictions, ground_truth)]
@@ -347,7 +327,7 @@ class ExemplarGenerator:
     This object select exemplars from given dataset
     """
 
-    def __init__(self, args, m, data, max_item, logs):
+    def __init__(self, data, exemplar_size, disable_m, batch_size, maxlen, dropout_rate,max_item, logs):
         """
         :param args: args
         :param m: number of exemplars per item
@@ -355,36 +335,33 @@ class ExemplarGenerator:
         :param max_item: accumulative number of item
         :param logs: logs
         """
-        self.sess_by_item = defaultdict(list)
         self.exemplars = dict()
-        self.m = m
-        self.args = args
+        self.m = exemplar_size
         self.data = data
         self.max_item = max_item
         self.logs = logs
         self.item_count = np.zeros(max_item)
+        self.dropout_rate = dropout_rate
 
-    def add_exemplar(self, exemplar=None, item_set=None):
-        """
-        This method sorts sub-sessions by their last item (label).
-        """
         self.sess_by_item = defaultdict(list)
-        exemplar_sampler = Sampler(self.args, self.data, self.args.batch_size)
-        exemplar_sampler.prepare_data()
-        exemplar_sampler.add_exemplar(exemplar=exemplar)
-        exemplar_sampler.shuffle_data()
-        batch_num = exemplar_sampler.batch_num
+        exemplar_sampler = Sampler(data, maxlen, batch_size, is_subseq=True)
+        batch_num = exemplar_sampler.batch_num()
 
         for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
                       desc='Sorting exemplars'):
             seq, pos = exemplar_sampler.sampler()
             pos = np.array(pos)
             for s, item in zip(seq, pos):
-                if item_set is not None and item not in item_set:
-                    continue
                 session = np.append(s, item)
                 self.sess_by_item[item].append(session)
                 self.item_count[item - 1] += 1
+
+        self.exemplars = defaultdict(list)
+        if disable_m:
+            self.item_count = np.ones_like(self.item_count)
+        item_prob = self.item_count / self.item_count.sum()
+        item_count = np.random.multinomial(n=self.m, pvals=item_prob, size=1)[0]
+        self.item_count = np.int32(item_count)
 
     def herding(self, rep, logits, item, seq, m):
         """
@@ -402,7 +379,7 @@ class ExemplarGenerator:
         step_t = 0
         selected_ids = []
         counter = 0
-        while not (len(selected_ids) == m) and step_t < 1.1 * m:  # 2
+        while not (len(selected_ids) == m) and step_t < 1.1 * m:
             tmp_t = np.dot(w_t, D)
             ind_max = np.argmax(tmp_t)
             w_t = w_t + mu - D[:, ind_max]
@@ -413,26 +390,19 @@ class ExemplarGenerator:
         self.exemplars[item] = [[seq[i][seq[i] != 0].tolist(), logits[i].tolist()] for i in selected_ids]
         return counter
 
-    def herding_selection(self, sess, model, history_item_count=None):
+    def herding_selection(self, sess, model):
         """
         This method selects exemplars using herding and selects exemplars, the number of exemplars is proportional to
         item frequency.
         """
-        self.exemplars = defaultdict(list)
-        if history_item_count is not None:
-            self.item_count = history_item_count
-        item_prob = self.item_count / self.item_count.sum()
-        item_count = np.random.multinomial(n=self.m, pvals=item_prob, size=1)[0]
-        item_count = np.int32(item_count)
-
         saved_num = 0
         for item in tqdm(self.sess_by_item, ncols=70, leave=False, unit='b', desc='Selecting exemplar'):
-            m = item_count[item - 1]
+            m = self.item_count[item - 1]
             seq = self.sess_by_item[item]
             seq = np.array(seq)
             input_seq = seq[:, :-1]
             rep, logits = sess.run([model.rep, model.logits], {model.input_seq: input_seq,
-                                                               model.dropout_rate: self.args.dropout_rate,
+                                                               model.dropout_rate: self.dropout_rate,
                                                                model.max_item: self.max_item,
                                                                model.is_training: False})
             rep = np.array(rep)
@@ -442,10 +412,53 @@ class ExemplarGenerator:
         print('Total saved exemplar: %d' % saved_num)
         self.logs.write('Total saved exemplar: %d\n' % saved_num)
 
-    def save(self, mode):
+    def loss_selection(self, sess, model):
         """
-        This method save the generated exemplars
+        This method selects exemplars by ranking loss, the number of exemplars is proportional to
+        item frequency.
         """
-        with open('%s_exemplar.pickle' % mode, mode='wb') as file:
-            pickle.dump(self.exemplars, file)
-        del self.exemplars
+        saved_num = 0
+        for item in tqdm(self.sess_by_item, ncols=70, leave=False, unit='b', desc='Selecting exemplar'):
+            m = self.item_count[item - 1]
+            if m < 0.5:
+                continue
+            seq = self.sess_by_item[item]
+            seq_num = len(seq)
+            seq = np.array(seq)
+            loss, logits = sess.run([model.loss, model.logits], {model.input_seq: seq[:, :-1],
+                                                                 model.pos: seq[:, -1],
+                                                                 model.dropout_rate: self.dropout_rate,
+                                                                 model.max_item: self.max_item,
+                                                                 model.is_training: False})
+            loss = np.array(loss)
+            logits = np.array(logits)
+            selected_ids = loss.argsort()[:int(min(m, seq_num))]
+            self.exemplars[item] = [[seq[i][seq[i] != 0].tolist(), logits[i].tolist()] for i in selected_ids]
+            saved_num += len(selected_ids)
+        print('Total saved exemplar: %d' % saved_num)
+        self.logs.write('Total saved exemplar: %d\n' % saved_num)
+
+    def randomly_selection(self, sess, model):
+        """
+        This method randomly selects exemplars, and selects equivalent number of exemplar for each label.
+        """
+        saved_num = 0
+        for item in tqdm(self.sess_by_item, ncols=70, leave=False, unit='b', desc='Selecting exemplar'):
+            seq = self.sess_by_item[item]
+            seq = np.array(seq)
+            seq_num = len(seq)
+            m = self.item_count[item - 1]
+            if m > 0:
+                selected_ids = np.random.choice(seq_num, min(m, seq_num), replace=False)
+                selected_seq = seq[selected_ids]
+                logits = sess.run(model.logits, {model.input_seq: selected_seq[:, :-1],
+                                                 model.dropout_rate: self.dropout_rate,
+                                                 model.max_item: self.max_item,
+                                                 model.is_training: False})
+                logits = np.array(logits)
+                for s, l in zip(selected_seq, logits):
+                    self.exemplars[item].append([s[s != 0].tolist(), l.tolist()])
+                    saved_num += 1
+        print('Total saved exemplar: %d' % saved_num)
+        self.logs.write('Total saved exemplar: %d\n' % saved_num)
+

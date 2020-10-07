@@ -8,7 +8,8 @@ import argparse
 import os
 import math
 import tensorflow.compat.v1 as tf
-from ADER import ADER
+from ADER import Ader
+from EWC import Ewc
 from tqdm import tqdm
 from util import *
 import gc
@@ -31,14 +32,14 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-def get_periods(args, logs):
+def get_periods(dataset, logs):
     """
     This function returns list of periods for joint learning or continue learning
     :return: [0] for joint learning,
              [1, 2, ..., period_num] for continue learning
     """
     # if continue learning: periods = [1, 2, ..., period_num]
-    datafiles = os.listdir(os.path.join('..', '..', 'data', args.dataset))
+    datafiles = os.listdir(os.path.join('..', '..', 'data', dataset))
     period_num = int(len(list(filter(lambda file: file.endswith(".txt"), datafiles))))
     logs.write('\nContinue Learning: Number of periods is %d.\n' % period_num)
     periods = range(1, period_num)
@@ -49,39 +50,19 @@ def get_periods(args, logs):
     return periods
 
 
-def load_exemplars(mode, fast_exemplar=None):
+def load_exemplars(fast_exemplar):
     """
     This method load exemplar in previous period
-    :param mode: 'train' or 'valid'
     :param fast_exemplar: read exemplar directly from previous exemplar variable if None read from .pickle file
     :return: exemplar list
     """
     exemplars = []
-    if fast_exemplar is None:
-        with open('%s_exemplar.pickle' % mode, mode='rb') as file:
-            exemplars_item = pickle.load(file)
-    else:
-        exemplars_item = fast_exemplar
+    exemplars_item = fast_exemplar
 
     for item in exemplars_item.values():
         if isinstance(item, list):
             exemplars.extend([i for i in item if i])
     return exemplars
-
-#
-# def split_data(data, choice_num):
-#     """
-#     Split the data into two parts and the number of data in second part is given by choice_num
-#     :param data: original data
-#     :param choice_num: the number of data in second part
-#     :return: two split data parts
-#     """
-#     data_size = len(data)
-#     sidx = np.arange(data_size, dtype='int32')
-#     np.random.shuffle(sidx)
-#     first_part = [data[s] for s in sidx[choice_num:]]
-#     second_part = [data[s] for s in sidx[:choice_num]]
-#     return first_part, second_part
 
 
 if __name__ == '__main__':
@@ -97,9 +78,18 @@ if __name__ == '__main__':
     # exemplar
     parser.add_argument('--exemplar_size', default=30000, type=int)  # size of exemplars
     parser.add_argument('--lambda_', default=0.8, type=float)  # base adaptive weight
-    # early stop parameter
-    parser.add_argument('--stop', default=5, type=int)  # number of epoch for early stop
-    # batch size and device
+    # baseline
+    parser.add_argument('--finetune', default=False, type=bool)  # use fine tuned hyper-parameter without dropout
+    parser.add_argument('--dropout', default=False, type=bool)  # use dropout
+    parser.add_argument('--ewc', default=False, type=bool)  # use ewc
+    parser.add_argument('--joint', default=False, type=bool)  # use joint learning
+    parser.add_argument('--ewc_sample_num', default=1000, type=int)  # number of exemplars to generate fisher info
+    # ablation study
+    parser.add_argument('--selection', default='herding', type=str)  # ['herding', 'loss', 'random']
+    parser.add_argument('--disable_distillation', default=False, type=bool)  # If true, disable knowledge distillation
+    parser.add_argument('--equal_exemplar', default=False, type=bool)
+    parser.add_argument('--fix_lambda', default=False, type=bool)
+    # batch size and device setup
     parser.add_argument('--num_epochs', default=100, type=int)
     parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--test_batch', default=64, type=int)
@@ -108,6 +98,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', default=0.0005, type=float)
     parser.add_argument('--num_blocks', default=2, type=int)
     parser.add_argument('--num_heads', default=1, type=int)
+    parser.add_argument('--stop', default=5, type=int)  # number of epoch for early stop
     # hyper-parameter fixed
     parser.add_argument('--random_seed', default=555, type=int)
     parser.add_argument('--hidden_units', default=150, type=int)
@@ -117,14 +108,18 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Set path
-    if not os.path.isdir(os.path.join('results', args.dataset + '_' + args.save_dir)):
-        os.makedirs(os.path.join('results', args.dataset + '_' + args.save_dir))
-    os.chdir(os.path.join('results', args.dataset + '_' + args.save_dir))
+    if not os.path.isdir(os.path.join('results', args.dataset + '-' + args.save_dir)):
+        os.makedirs(os.path.join('results', args.dataset + '-' + args.save_dir))
+    os.chdir(os.path.join('results', args.dataset + '-' + args.save_dir))
+
     # Record logs
     logs = open('Training_logs.txt', mode='w')
     logs.write(' '.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
 
     # For reproducibility
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device_num)
+    os.environ['TF_DETERMINISTIC_OPS'] = '1'
+    os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
     np.random.seed(args.random_seed)
     random.seed(args.random_seed)
     tf.set_random_seed(args.random_seed)
@@ -141,15 +136,22 @@ if __name__ == '__main__':
         item_num = 25958    # number of items in YOOCHOOSE
     else:
         raise ValueError('Invalid dataset name')
+    # Disable dropout for EWC and fine-tune baseline
+    args.dropout_rate = 0 if (args.ewc or args.finetune) else args.dropout_rate
+
     with tf.device('/gpu:%d' % args.device_num):
-        model = ADER(item_num, args)
+        model = Ader(item_num, args) if not args.ewc else Ewc(item_num, args)
 
     # Loop each period for continue learning
-    periods = get_periods(args, logs)
-    dataloader = DataLoader(args, item_num, logs)
+    periods = get_periods(args.dataset, logs)
+    dataloader = DataLoader(args.dataset, item_num, logs)
     best_epoch, item_num_prev = 0, 0
     t_start = time.time()
 
+    MRR_20 = []
+    Recall_20 = []
+    MRR_10 = []
+    Recall_10 = []
     for period in periods:
 
         print('Period %d:' % period)
@@ -159,70 +161,86 @@ if __name__ == '__main__':
         # Prepare data
         # load train data
         train_sess, train_item_set = dataloader.train_loader(period - 1)
-        train_sampler = Sampler(args, train_sess, args.batch_size)
-        train_sampler.prepare_data()
+        if args.joint and period > 1:
+            for p in range(1, period):
+                pre_train_sess, _ = dataloader.train_loader(p-1)
+                train_sess.extend(pre_train_sess)
+        train_sampler = Sampler(train_sess, args.maxlen, args.batch_size)
         valid_subseq, train_subseq = train_sampler.split_data(valid_portion=0.1, return_train=True)
+        batch_num = train_sampler.batch_num()
         # load test data
-        test_sess, test_size, test_item_set = dataloader.evaluate_loader(period)
+        test_sess = dataloader.evaluate_loader(period)
         max_item = dataloader.max_item()
         # exemplar
-        if period > 1:
-            train_exemplar_data_logits = load_exemplars('train', fast_exemplar)
-            train_exemplar_size = len(train_exemplar_data_logits)
-            train_exemplar_subseq = np.array(train_exemplar_data_logits)[:, 0].tolist()
+        if period > 1 and not(args.finetune or args.dropout or args.joint):
+            exemplar_data_logits = load_exemplars(fast_exemplar)
+            exemplar_size = len(exemplar_data_logits)
+            exemplar_subseq = np.array(exemplar_data_logits)[:, 0].tolist()
+            # prepare exemplar sampler
+            batch_num = train_sampler.batch_num()
+            exemplar_batch = int(exemplar_size / batch_num)
+            exemplar_sampler = Sampler([], args.maxlen, exemplar_batch)
+            exemplar_sampler.add_exemplar(exemplar_data_logits)
         else:
-            train_exemplar_subseq = None
+            exemplar_subseq = []
 
         # Set loss
-        if period > 1:
+        if period > 1 and not (args.finetune or args.dropout or args.joint):
             # find lambda for current cycle
-            new_item = max_item - item_num_prev
-            train_size = train_sampler.data_size()
-            lambda_ = args.lambda_ * math.sqrt((item_num_prev / max_item) * (train_exemplar_size / train_size))
-            model.update_exemplar_loss(lambda_=lambda_)
-            # prepare exemplar sampler
-            train_sampler.shuffle_data()
-            batch_num = train_sampler.batch_num
-            exemplar_batch = int(train_exemplar_size / batch_num)
-            exemplar_samplar = Sampler(args, [], exemplar_batch)
-            exemplar_samplar.prepare_data()
-            exemplar_samplar.add_full_exemplar(train_exemplar_data_logits)
-            exemplar_samplar.shuffle_data()
+            if args.ewc or args.fix_lambda:
+                lambda_ = args.lambda_
+            else:
+                new_item = max_item - item_num_prev
+                train_size = train_sampler.data_size()
+                lambda_ = args.lambda_ * math.sqrt((item_num_prev / max_item) * (exemplar_size / train_size))
+            model.update_loss(lambda_=lambda_)
         else:
             model.set_vanilla_loss()
-            train_sampler.shuffle_data()
-            batch_num = train_sampler.batch_num
 
         # Start of the main algorithm
         with tf.Session(config=config) as sess:
 
             # initialize variables or reload from previous period
             saver = tf.train.Saver(max_to_keep=1)
-            saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch)) \
-                if period > 1 else sess.run(tf.global_variables_initializer())
+            if period > 1 and not args.joint:
+                saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
+            else:
+                sess.run(tf.global_variables_initializer())
 
             # train
             best_epoch = 1
             for epoch in range(1, args.num_epochs + 1):
+
                 # train each epoch
                 for _ in tqdm(range(batch_num), total=batch_num, ncols=70, leave=False, unit='b',
                               desc='Training epoch %d/%d' % (epoch, args.num_epochs)):
                     # load train batch
                     seq, pos = train_sampler.sampler()
 
-                    if period > 1:
-                        ex_seq, ex_pos, logits = exemplar_samplar.exemplar_sampler()
+                    if period > 1 and not (args.finetune or args.dropout or args.joint or args.ewc):
+                        ex_seq, ex_pos, logits = exemplar_sampler.exemplar_sampler()
                         seq = seq + ex_seq
-                        # exemplar using logistic-matching label
-                        sess.run(model.train_op, {model.input_seq: seq,
-                                                  model.pos: pos,
-                                                  model.is_training: True,
-                                                  model.max_item: max_item,
-                                                  model.exemplar_logits: logits,
-                                                  model.dropout_rate: args.dropout_rate,
-                                                  model.lr: args.lr})
+
+                        if args.disable_distillation:
+                            # exemplar using one-hot label
+                            sess.run(model.train_op, {model.input_seq: seq,
+                                                      model.pos: pos,
+                                                      model.is_training: True,
+                                                      model.max_item: max_item,
+                                                      model.exemplar_pos: ex_pos,
+                                                      model.dropout_rate: args.dropout_rate,
+                                                      model.lr: args.lr})
+                        else:
+                            # exemplar using logistic-matching label, knowledge distillation
+                            sess.run(model.train_op, {model.input_seq: seq,
+                                                      model.pos: pos,
+                                                      model.is_training: True,
+                                                      model.max_item: max_item,
+                                                      model.exemplar_logits: logits,
+                                                      model.dropout_rate: args.dropout_rate,
+                                                      model.lr: args.lr})
                     else:
-                        # without using exemplar for initial cycle
+                        # without using exemplar for initial cycle and baselines
                         sess.run(model.train_op, {model.input_seq: seq,
                                                   model.pos: pos,
                                                   model.is_training: True,
@@ -230,9 +248,16 @@ if __name__ == '__main__':
                                                   model.dropout_rate: args.dropout_rate,
                                                   model.lr: args.lr})
 
+                if period > 1 and args.ewc:
+                    # if use ewc, update saved variables and fisher for each epoch
+                    model.variables_prev = sess.run(model.variables)
+                    random_exemplar = random.sample(exemplar_subseq, min(len(exemplar_subseq), args.ewc_sample_num))
+                    model.compute_fisher(sess, random_exemplar, 50, max_item)
+
                 # validate performance
-                valid_evaluator = Evaluator(args, [], max_item, 'valid', model, sess, logs)
-                valid_evaluator.evaluate(epoch, valid_subseq)
+                valid_evaluator = Evaluator(valid_subseq, True, args.maxlen, args.test_batch,
+                                            max_item, 'valid', model, sess, logs)
+                valid_evaluator.evaluate(epoch)
                 performance = valid_evaluator.results()[1]
 
                 # early stop
@@ -248,21 +273,52 @@ if __name__ == '__main__':
 
             # test performance
             saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
-            test_evaluator = Evaluator(args, test_sess, max_item, 'test', model, sess, logs)
+            test_evaluator = Evaluator(test_sess, False, args.maxlen, args.test_batch,
+                                       max_item, 'test', model, sess, logs)
             test_evaluator.evaluate(best_epoch)
+            MRR_20.append(test_evaluator.results()[0])
+            Recall_20.append(test_evaluator.results()[1])
+            MRR_10.append(test_evaluator.results()[2])
+            Recall_10.append(test_evaluator.results()[3])
 
             # save exemplars
-            train_exemplar = ExemplarGenerator(args, args.exemplar_size, train_sess, max_item, logs)
-            train_exemplar.add_exemplar(exemplar=train_exemplar_subseq)
-            train_exemplar.herding_selection(sess, model)
-            fast_exemplar = train_exemplar.exemplars
-            # train_exemplar.save('train')
-            del train_exemplar
+            if not (args.dropout or args.finetune or args.joint):
+                exemplar_candidate = train_subseq
+                exemplar_candidate.extend(valid_subseq)
+                exemplar_candidate.extend(exemplar_subseq)
+                exemplar = ExemplarGenerator(exemplar_candidate,
+                                             args.exemplar_size, args.equal_exemplar, args.batch_size, args.maxlen,
+                                             args.dropout_rate, max_item, logs)
+                if args.selection == 'herding':
+                    exemplar.herding_selection(sess, model)
+                elif args.selection == 'loss':
+                    exemplar.loss_selection(sess, model)
+                elif args.selection == 'random':
+                    exemplar.randomly_selection(sess, model)
+                else:
+                    print("Invalid exemplar selection method")
+                fast_exemplar = exemplar.exemplars
+                del exemplar
 
             # save current meta-data for next cycle
             item_num_prev = max_item
             prev_item_set = train_item_set
 
+            # if use ewc method, calculate fisher and save variable for the next sample
+            if args.ewc:
+                exemplar_subseq = np.array(load_exemplars(fast_exemplar))[:, 0].tolist()
+                model.variables_prev = sess.run(model.variables)
+                random_exemplar = random.sample(exemplar_subseq, min(len(exemplar_subseq), args.ewc_sample_num))
+                model.compute_fisher(sess, random_exemplar, 50, max_item)
+
+    MRR_20, Recall_20, MRR_10, Recall_10 = np.array(MRR_20).mean(), \
+                                           np.array(Recall_20).mean(), \
+                                           np.array(MRR_10).mean(), \
+                                           np.array(Recall_10).mean()
+    info = 'Average: (MRR@20: %.4f, RECALL@20: %.4f, MRR@10: %.4f, RECALL@10: %.4f)' % (MRR_20, Recall_20,
+                                                                                        MRR_10, Recall_10)
+    print(info)
+    logs.write(info + '\n')
     print('Total time: %.2f minutes.' % ((time.time() - t_start) / 60.0))
     logs.write('Total time: %.2f minutes\nDone.' % ((time.time() - t_start) / 60.0))
     logs.close()
