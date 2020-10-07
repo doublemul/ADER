@@ -4,7 +4,8 @@
 
 ## About
 - This is our implementation for the paper:  
-[ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Session-based Recommendation](https://dl.acm.org/doi/abs/10.1145/3383313.3412218)  
+[ADER: Adaptively Distilled Exemplar Replay towards Continual Learning for Session-based 
+Recommendation](https://dl.acm.org/doi/abs/10.1145/3383313.3412218)  
     - **Authors**: Fei Mi, Xiaoyu Lin, and Boi Faltings  
     - *First two authors have similar contributions.*  
     - Please cite our paper if you use the code or datasets.  
@@ -34,9 +35,11 @@ set every period, and use it for distillation in the next period.
 show that ADER outperforms state-of-the-art baselines. Furthermore, we also find ADER overcomes the model trained by 
 the entire dataset to some extent, which demonstrates its advantages in removing long-term user data.*
 ## Requirements
-Python 3.7, TensorFlow 2.1.0, and other common packages listed in `requirements.txt` or `requirements.yaml`  
-Install required environment: `conda create env -f requirement.yaml`  
-Activate required environment: `conda activate ader`
+- Python 3.7
+- TensorFlow 2.1.0
+- Other common packages listed in `requirements.txt` or `requirements.yaml`  
+- Install required environment: `conda create env -f requirement.yaml`  
+- Activate required environment: `conda activate ader`
 
 ## Dataset and Pre-processing
 ### Dataset
@@ -44,8 +47,8 @@ Two widely used dataset are adopted:
 
 - [DIGINETICA](http://cikm2016.cs.iupui.edu/cikm-cup): This dataset contains click-streams data on a e-commerce
 site over 5 months, and it is used for CIKM Cup 2016.  
-- [YOOCHOOSE](http://2015.recsyschallenge.com/challenge.html): It is another dataset used by RecSys Challenge 2015 for predicting
-click-streams on another e-commerce site over 6 months.  
+- [YOOCHOOSE](http://2015.recsyschallenge.com/challenge.html): It is another dataset used by RecSys Challenge 2015 
+for predicting click-streams on another e-commerce site over 6 months.  
 
 The pre-processed data used in our paper is uploaded in `data/DIGINETICA` and `data/YOOCHOOSE` folder.<br/>
 ### Run data pre-process
