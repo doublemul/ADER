@@ -32,7 +32,7 @@ fine-tuned distillation loss to keep the knowledge gained from the previous data
 set every period, and use it for distillation in the next period. 
 >We evaluate our framework on two benchmark datasets based on the self-attentive recommender. Our experimental results 
 show that ADER outperforms state-of-the-art baselines. Furthermore, we also find ADER overcomes the model trained by 
-the entire dataset in certain aspects, which demonstrates its advantages in removing long-term user data.*
+the entire dataset to some extent, which demonstrates its advantages in removing long-term user data.*
 ## Requirements
 Python 3.7, TensorFlow 2.1.0, and other common packages listed in `requirements.txt` or `requirements.yaml`  
 Install required environment: `conda create env -f requirement.yaml`  
