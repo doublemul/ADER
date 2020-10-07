@@ -20,8 +20,19 @@
 - [Citation](#citation)
 
 ## Background
-Although session-based recommenders have achieved significant improvements due to some new techniques like recurrent neural network and attention, they train the model only using entire data or most recent fraction. The growing concern about privacy prohibits recommenders keeping long-term user’s browsing history. On the other hand, more recent data is more useful for recommenders, but how to select the last fraction of data from the entire dataset is a problem in this static scenario. We address those problems by employing existing recommender in an incremental learning scenario and propose a framework called Adaptively Distilled Exemplar Replay (ADER) to balance the model’s ability to learn new data and catastrophic forgetting. It is based on a loss composed of a cross-entropy loss to learn the latest data and fine-tuned distillation loss to keep the knowledge gained from the previous data. We select and update a small exemplar set every period, and use it for distillation in the next period. We evaluate our framework on two benchmark datasets based on the self-attentive recommender. Our experimental results show that ADER outperforms state-of-the-art baselines. Furthermore, we also find ADER overcomes the model trained by the entire dataset, which demonstrates its advantages in removing long-term user data.
-
+>*Although session-based recommenders have achieved significant improvements due to some new techniques like recurrent 
+neural network and attention, they train the model only using entire data or most recent fraction. The growing concern 
+about privacy prohibits recommenders keeping long-term user’s browsing history. On the other hand, more recent data is
+more useful for recommenders, but how to select the last fraction of data from the entire dataset is a problem in this 
+static scenario. 
+>We address those problems by employing existing recommender in an incremental learning scenario and 
+propose a framework called Adaptively Distilled Exemplar Replay (ADER) to balance the model’s ability to learn new data 
+and catastrophic forgetting. It is based on a loss composed of a cross-entropy loss to learn the latest data and 
+fine-tuned distillation loss to keep the knowledge gained from the previous data. We select and update a small exemplar 
+set every period, and use it for distillation in the next period. 
+>We evaluate our framework on two benchmark datasets based on the self-attentive recommender. Our experimental results 
+show that ADER outperforms state-of-the-art baselines. Furthermore, we also find ADER overcomes the model trained by 
+the entire dataset in certain aspects, which demonstrates its advantages in removing long-term user data.*
 ## Requirements
 Python 3.7, TensorFlow 2.1.0, and other common packages listed in `requirements.txt` or `requirements.yaml`  
 Install required environment: `conda create env -f requirement.yaml`  
@@ -66,18 +77,18 @@ the root of the project:
     - *Dropout:* ``python main.py --dropout=True --save_dir=dropout``
     - *EWC:* ``python main.py --ewc=True --save_dir=ewc``
     - *Joint:* ``python main.py --joint=True --save_dir=joint``
-- We also provide some in-depth analysis and ablation study models for users to run and test
+- We also provide some in-depth analysis and ablation study models for users to run and test:
     - *Different number of exemplars (e.g. 20k):* ``python main.py --exemplar_size=20000 --save_dir=exemplar20k``
     - *ER<sub>hering</sub>* ``python main.py --disable_distillation=True --save_dir=ER-herding``
     - *ER<sub>loss</sub>* ``python main.py --disable_distillation=True --selection=loss --save_dir=ER-loss``
     - *ER<sub>random</sub>* ``python main.py --disable_distillation=True --selection=random --save_dir=ER-random``
     - *ADER<sub>equal</sub>* ``python main.py --equal_exemplar=True --save_dir=equal_exemplar``
     - *ADER<sub>fix</sub>* ``python main.py --fix_lambda=True --save_dir=fix_lambda``
-
-Note: the dropout rate can be set by changing the argument `--dropout_rate`, 
+- **Note:** 
+    - The dropout rate can be set by changing the argument `--dropout_rate`, 
 and the hyper-parameter *lambda* in EWC can be set by changing the argument `--lambda_`. You may fine tune these 
-hyper-parameters to get the best performance on different dataset. For more details of ablation study models, please
-refer our paper.
+hyper-parameters to get the best performance on different dataset. 
+    - For more details of ablation study models, please refer to our paper.
 
 
 ## Results
