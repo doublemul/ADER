@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 # @Project      : ADER
 # @File         : util.py
-# @Description  : Some class to read data, evaluate results, select exemplar
+# @Author       : Xiaoyu Lin
+
+from typing import Any, Callable, List, Optional, Union, Tuple, TextIO, Set
 import random
 import os
-import pickle
 import numpy as np
 import math
 from collections import defaultdict
@@ -13,29 +14,31 @@ from tqdm import tqdm
 
 
 class DataLoader:
+    """ DataLoader object to load train, valid and test data from dataset.
+    Args:
+        dataset (str): Name of the dataset.
     """
-    DataLoader object to load train, valid and test data from dataset.
-    """
-    def __init__(self, dataset, item_num, logs):
-        """
-        :param dataset: dataset name
-        :param item_num: all item number of entire dataset
-        :param logs: logs
-        """
-        self.logs = logs
+
+    def __init__(self,
+                 dataset: str,
+                 ) -> None:
+
         self.item_set = set()
         self.path = os.path.join('..', '..', 'data', dataset)
+        # remove item in testing data that not appeared in training data
         self.is_remove_item = True
-        self.item_counter = np.zeros(item_num)
 
-    def train_loader(self, period=None):
-        """
-        This method return train data of specific period
-        :param period: current period
-        :return: train data of current period
+    def train_loader(self,
+                     period: int
+                     ) -> (list, str):
+        """ This method load train data of specific period.
+        Args:
+            period (int): The period which load training data from.
+        Returns:
+            sessions (list): Training item sequences (session) of selected periods.
+            info (str): Information of training data.
         """
         Sessions = defaultdict(list)
-        train_item_set = set()
         file_name = '/period_%d.txt' % period
         with open(self.path + file_name, 'r') as f:
             for line in f:
@@ -44,25 +47,24 @@ class DataLoader:
                 itemId = int(itemId)
                 self.item_set.add(itemId)
                 Sessions[sessId].append(itemId)
-                self.item_counter[itemId - 1] += 1
-                train_item_set.add(itemId)
+
         sessions = list(Sessions.values())
         del Sessions
         info = 'Train set information: total number of action: %d.' \
                % sum(list(map(lambda session: len(session), sessions)))
-        self.logs.write(info + '\n')
         print(info)
 
-        for sess in sessions:
-            self.item_counter[sess[0] - 1] -= 1
+        return sessions, info
 
-        return sessions, train_item_set
-
-    def evaluate_loader(self, period=None):
-        """
-        This method load and return test or valid data according to mode of specific period
-        :param period: current period
-        :return: test data
+    def evaluate_loader(self,
+                        period: int,
+                        ) -> (list, str):
+        """ This method loads test data of specific period.
+        Args:
+            period (int): The period which load testing data from.
+        Returns:
+            sessions (list): Testing item sequences (session) of selected periods.
+            info (str): Information of testing data.
         """
         Sessions = defaultdict(list)
         removed_num = 0
@@ -93,32 +95,35 @@ class DataLoader:
 
         info = 'Test set information: original total number of action: %d, removed number of action: %d.' \
                % (total_num, removed_num)
-        self.logs.write(info + '\n')
-        print(info)
         sessions = list(Sessions.values())
         del Sessions
 
-        return sessions
+        return sessions, info
 
-    def max_item(self):
-        """
-        This method returns the maximum item in item set.
+    def max_item(self) -> int:
+        """ This method returns the maximum item number in current cycle training data.
         """
         return max(self.item_set)
 
 
 class Sampler:
-    """
-    This object samples data and generates positive labels for train, valid and test, as well as negative sample for
-    train.
+    """ This object samples data and generates positive labels for train, valid and test data,
+            as well as negative sample for training data.
+    Args:
+        data (list): Original data needs to be sampled.
+        maxlen (int): The length of each sequence.
+        batch_size (int): The number of data in one batch.
+        is_subseq (bool): If True, the given data is sub-sequence. If False, the given data is full
+            original data.
     """
 
-    def __init__(self, data, maxlen, batch_size, is_subseq=False):
-        """
-        :param args: args
-        :param data: original data for sampling
-        :param batch_size: size of one batch
-        """
+    def __init__(self,
+                 data: list,
+                 maxlen: int,
+                 batch_size: int,
+                 is_subseq: bool = False
+                 ) -> None:
+
         self.maxlen = maxlen
         self.batch_size = batch_size
 
@@ -141,12 +146,15 @@ class Sampler:
         self.data_indices = list(range(len(self.prepared_data)))
         random.shuffle(self.data_indices)
 
-    def label_generator(self, session, return_pos=True):
-        """
-        This method return input sequence as well as positive and negative sample
-        :param return_pos: if True, return processed session and label, else only return processed session
-        :param session: a item sequence
-        :return: input sequence, [label]
+    def label_generator(self,
+                        session: list,
+                        ) -> (list, int):
+        """ This method split sessions into input sequence and labels.
+        Args:
+            session (list): Original sub-sequence of different length.
+        Return:
+            seq (list): The input sequence with fixed length set by maxlen.
+            pos (int): Label (item number).
         """
         seq = np.zeros([self.maxlen], dtype=np.int32)
         pos = np.array(session[-1], dtype=np.int32)
@@ -157,15 +165,15 @@ class Sampler:
             idx -= 1
             if idx == -1:
                 break
-        if return_pos:
-            return seq, pos
-        else:
-            return seq
 
-    def add_exemplar(self, exemplar):
-        """
-        Add exemplar data and logits
-        :param exemplar: exemplar data and logits
+        return seq, pos
+
+    def add_exemplar(self,
+                     exemplar: list
+                     ) -> None:
+        """ Add exemplar data and logits from previous cycle model
+        Args:
+             exemplar (list): Exemplar data and corresponding logits.
         """
         self.logits = []
         for session, logits in exemplar:
@@ -175,12 +183,17 @@ class Sampler:
         self.data_indices = list(range(len(self.prepared_data)))
         random.shuffle(self.data_indices)
 
-    def split_data(self, valid_portion, return_train=False):
-        """
-        Split data into valid and train dataset
-        :param valid_portion: the portion of validation dataset w.r.t entire dataset
-        :param return_train: if True, return validation data and train data, else only return validation data
-        :return:
+    def split_data(self,
+                   valid_portion: float,
+                   return_train: bool = False
+                   ) -> Union[list, (list, list)]:
+        """ Split data into valid and train dataset and remove validation data from original training data.
+        Args:
+            valid_portion (float): The portion of validation dataset w.r.t entire dataset.
+            return_train: If True, return validation data and train data, else only return validation data.
+        Returns:
+            valid_data (list): Validation sub-sequence.
+            train_data (list): Training sub-sequence.
         """
 
         data_size = len(self.prepared_data)
@@ -200,9 +213,10 @@ class Sampler:
         else:
             return valid_data
 
-    def sampler(self):
-        """
-        This method returns a batch of sample: (seq, pos (,neg))
+    def sampler(self) -> list:
+        """ This method returns a batch of sample: N * (sequence, label).
+        Returns:
+            one_batch (list): One batch of data in the size of N * (sequence length, 1).
         """
         one_batch = []
         for i in range(self.batch_size):
@@ -222,9 +236,10 @@ class Sampler:
 
         return zip(*one_batch)
 
-    def exemplar_sampler(self):
-        """
-        This method returns a batch of sample: (seq, pos (,neg))
+    def exemplar_sampler(self) -> list:
+        """ This method returns a batch of exemplar data: N * (exemplar, logits).
+        Return:
+            one_batch (list): One batch of data in the size of N * (sequence length, previous item number).
         """
         one_batch = []
         for i in range(self.batch_size):
@@ -245,16 +260,23 @@ class Sampler:
 
         return zip(*one_batch)
 
-    def data_size(self):
+    def data_size(self) -> int:
+        """ Get the number of sub-sequences in the data set.
+        Returns:
+            (int): The number of sub-sequences in the data set.
+        """
         return len(self.prepared_data)
 
-    def batch_num(self):
+    def batch_num(self) -> int:
+        """ Get the number of batches according to dataset size and batch size.
+        Return:
+            (int): The number of batches in one epoch.
+        """
         return math.ceil(len(self.prepared_data) * 1.0 / self.batch_size)
 
 
 class Evaluator:
-    """
-    This object evaluates performance on valid or test data.
+    """ This object evaluates performance on valid or test data.
     """
 
     def __init__(self, data, is_subseq, maxlen, batch_size, max_item, mode, model, sess, logs):
@@ -299,8 +321,7 @@ class Evaluator:
         self.display(epoch)
 
     def results(self):
-        """
-        This method returns evaluation metrics(MRR@20, RECALL@20, MRR@10, RECALL@10)
+        """ This method returns evaluation results (MRR@20, RECALL@20, MRR@10, RECALL@10)
         """
         valid_user = len(self.ranks)
         valid_ranks_20 = list(filter(lambda x: x < 20, self.ranks))
@@ -323,15 +344,17 @@ class Evaluator:
 
 
 class ExemplarGenerator:
-    """
-    This object select exemplars from given dataset
+    """ This object select exemplars from given data.
+    Args:
+        data (List): train data, valid data at current cycle and exemplar data from previous cycle in the
+            from of sub-sequence.
+
     """
 
-    def __init__(self, data, exemplar_size, disable_m, batch_size, maxlen, dropout_rate,max_item, logs):
+    def __init__(self, data, exemplar_size, disable_m, batch_size, maxlen, dropout_rate, max_item, logs):
         """
-        :param args: args
         :param m: number of exemplars per item
-        :param data: dataset, train data or valid data
+        :param data: train data, valid data at current cycle and exemplar data from previous cycle
         :param max_item: accumulative number of item
         :param logs: logs
         """
@@ -461,4 +484,3 @@ class ExemplarGenerator:
                     saved_num += 1
         print('Total saved exemplar: %d' % saved_num)
         self.logs.write('Total saved exemplar: %d\n' % saved_num)
-

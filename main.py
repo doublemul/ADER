@@ -100,7 +100,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_heads', default=1, type=int)
     parser.add_argument('--stop', default=5, type=int)  # number of epoch for early stop
     # hyper-parameter fixed
-    parser.add_argument('--random_seed', default=555, type=int)
+    parser.add_argument('--random_seed', default=0, type=int)
     parser.add_argument('--hidden_units', default=150, type=int)
     parser.add_argument('--maxlen', default=50, type=int)
     parser.add_argument('--dropout_rate', default=0.3, type=float)
@@ -144,7 +144,7 @@ if __name__ == '__main__':
 
     # Loop each period for continue learning
     periods = get_periods(args.dataset, logs)
-    dataloader = DataLoader(args.dataset, item_num, logs)
+    dataloader = DataLoader(args.dataset)
     best_epoch, item_num_prev = 0, 0
     t_start = time.time()
 
@@ -160,16 +160,19 @@ if __name__ == '__main__':
 
         # Prepare data
         # load train data
-        train_sess, train_item_set = dataloader.train_loader(period - 1)
+        train_sess, info = dataloader.train_loader(period - 1)
+        logs.write(info + '\n')
         if args.joint and period > 1:
             for p in range(1, period):
-                pre_train_sess, _ = dataloader.train_loader(p-1)
+                pre_train_sess, info = dataloader.train_loader(p-1)
+                logs.write(info + '\n')
                 train_sess.extend(pre_train_sess)
         train_sampler = Sampler(train_sess, args.maxlen, args.batch_size)
         valid_subseq, train_subseq = train_sampler.split_data(valid_portion=0.1, return_train=True)
         batch_num = train_sampler.batch_num()
         # load test data
-        test_sess = dataloader.evaluate_loader(period)
+        test_sess, info = dataloader.evaluate_loader(period)
+        logs.write(info + '\n')
         max_item = dataloader.max_item()
         # exemplar
         if period > 1 and not(args.finetune or args.dropout or args.joint):
@@ -190,7 +193,6 @@ if __name__ == '__main__':
             if args.ewc or args.fix_lambda:
                 lambda_ = args.lambda_
             else:
-                new_item = max_item - item_num_prev
                 train_size = train_sampler.data_size()
                 lambda_ = args.lambda_ * math.sqrt((item_num_prev / max_item) * (exemplar_size / train_size))
             model.update_loss(lambda_=lambda_)
@@ -302,7 +304,6 @@ if __name__ == '__main__':
 
             # save current meta-data for next cycle
             item_num_prev = max_item
-            prev_item_set = train_item_set
 
             # if use ewc method, calculate fisher and save variable for the next sample
             if args.ewc:
