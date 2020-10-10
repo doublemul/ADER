@@ -186,7 +186,7 @@ class Sampler:
     def split_data(self,
                    valid_portion: float,
                    return_train: bool = False
-                   ) -> Union[list, (list, list)]:
+                   ) -> Union[list, tuple]:
         """ Split data into valid and train dataset and remove validation data from original training data.
         Args:
             valid_portion (float): The portion of validation dataset w.r.t entire dataset.
