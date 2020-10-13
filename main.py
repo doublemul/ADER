@@ -18,10 +18,10 @@ import time
 
 def str2bool(v: str) -> bool:
     """ Convert string to boolean.
-        Args:
-            v (string): string
-        Return:
-            (boolean): True or False
+    Args:
+        v (string): string
+    Return:
+        (boolean): True or False
     """
     if isinstance(v, bool):
         return v
