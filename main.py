@@ -19,9 +19,9 @@ import time
 def str2bool(v: str) -> bool:
     """ Convert string to boolean.
     Args:
-        v (string): string
+        v (str): String.
     Returns:
-        (boolean): True or False
+        (bool): True or False.
     """
     if isinstance(v, bool):
         return v
