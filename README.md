@@ -10,7 +10,7 @@ Recommendation](https://dl.acm.org/doi/abs/10.1145/3383313.3412218)
     - *First two authors have similar contributions.*  
     - Please cite our paper if you use the code or datasets.  
 - This is also a semester project completed by Xiaoyu Lin and supervised by Fei Mi and Prof. Boi Faltings.  
-- [[Poster](poster.pdf)] - [Video]
+- [[Poster](poster.pdf)] - [[Video](https://crossminds.ai/video/5f7fc27ad81cf36f1a8e37b6)]
 ## Table of Contents  
 - [Background](#background)
 - [Requirements](#requirements)
