@@ -207,7 +207,7 @@ if __name__ == '__main__':
 
             # initialize variables or reload from previous period
             saver = tf.train.Saver(max_to_keep=1)
-            if period > 1 and not args.joint:
+            if period > 1:
                 saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
             else:
                 sess.run(tf.global_variables_initializer())
