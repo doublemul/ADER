@@ -20,7 +20,7 @@ def str2bool(v: str) -> bool:
     """ Convert string to boolean.
     Args:
         v (string): string
-    Return:
+    Returns:
         (boolean): True or False
     """
     if isinstance(v, bool):
