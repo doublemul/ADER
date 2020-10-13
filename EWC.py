@@ -3,7 +3,6 @@
 # @Project      : ADER
 # @File         : EWC.py
 # @Description  : EWC baseline model file.
-# @Author       : Xiaoyu Lin
 # The implemention of self-attentive recommender is modified based on https://github.com/kang205/SASRec
 
 from modules import *

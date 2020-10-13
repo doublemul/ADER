@@ -2,15 +2,16 @@
 # -*- coding: utf-8 -*-
 # @Project      : ADER
 # @File         : util.py
-# @Author       : Xiaoyu Lin
 
-from typing import Any, Callable, List, Optional, Union, Tuple, TextIO, Set
+from typing import Union, Iterable, Tuple
+import tensorflow.compat.v1 as tf
 import random
 import os
 import numpy as np
 import math
 from collections import defaultdict
 from tqdm import tqdm
+from ADER import Ader
 
 
 class DataLoader:
@@ -31,7 +32,7 @@ class DataLoader:
     def train_loader(self,
                      period: int
                      ) -> (list, str):
-        """ This method load train data of specific period.
+        """ Load train data of specific period.
         Args:
             period (int): The period which load training data from.
         Returns:
@@ -101,7 +102,7 @@ class DataLoader:
         return sessions, info
 
     def max_item(self) -> int:
-        """ This method returns the maximum item number in current cycle training data.
+        """ This method returns the number of accumulative items until current cycle training data.
         """
         return max(self.item_set)
 
@@ -111,7 +112,7 @@ class Sampler:
             as well as negative sample for training data.
     Args:
         data (list): Original data needs to be sampled.
-        maxlen (int): The length of each sequence.
+        maxlen (int): The input length of each sequence for the model.
         batch_size (int): The number of data in one batch.
         is_subseq (bool): If True, the given data is sub-sequence. If False, the given data is full
             original data.
@@ -130,6 +131,7 @@ class Sampler:
         self.dataset_size = 0
         self.batch_counter = 0
         self.data_indices = []
+        self.logits = []
 
         self.prepared_data = []
         if not is_subseq:
@@ -213,7 +215,7 @@ class Sampler:
         else:
             return valid_data
 
-    def sampler(self) -> list:
+    def sampler(self) -> Union[Iterable[Tuple[list, int]]]:
         """ This method returns a batch of sample: N * (sequence, label).
         Returns:
             one_batch (list): One batch of data in the size of N * (sequence length, 1).
@@ -236,7 +238,7 @@ class Sampler:
 
         return zip(*one_batch)
 
-    def exemplar_sampler(self) -> list:
+    def exemplar_sampler(self) -> Iterable[Tuple[list, int, list]]:
         """ This method returns a batch of exemplar data: N * (exemplar, logits).
         Return:
             one_batch (list): One batch of data in the size of N * (sequence length, previous item number).
@@ -261,53 +263,57 @@ class Sampler:
         return zip(*one_batch)
 
     def data_size(self) -> int:
-        """ Get the number of sub-sequences in the data set.
-        Returns:
-            (int): The number of sub-sequences in the data set.
+        """ Returns the number of sub-sequences in the data set.
         """
         return len(self.prepared_data)
 
     def batch_num(self) -> int:
-        """ Get the number of batches according to dataset size and batch size.
-        Return:
-            (int): The number of batches in one epoch.
+        """ Returns the number of batches according to dataset size and batch size.
         """
         return math.ceil(len(self.prepared_data) * 1.0 / self.batch_size)
 
 
 class Evaluator:
     """ This object evaluates performance on valid or test data.
+    Args:
+        data (list): Data to evaluate, valid data or test data.
+        is_subseq (bool): If true, the data to evaluate is sub-sequence, else is full sequence.
+        maxlen (int): The input length of each sequence for the model.
+        batch_size (int): Batch size for test.
+        max_item (int): The number of accumulative items until current cycle.
+        mode (str): ['valid', 'test'] for display.
+        model (Ader): Trained model for evaluate.
+        sess (tf.Session): Tensorflow session.
     """
 
-    def __init__(self, data, is_subseq, maxlen, batch_size, max_item, mode, model, sess, logs):
-        """
-        :param args: args
-        :param data: data to evaluate, valid data or test data
-        :param max_item: maximum item at current period
-        :param model: model
-        :param mode: 'valid' or 'test'
-        :param sess: tf session
-        :param logs: logs
-        """
-        self.maxlen = maxlen
-        self.batch_size = batch_size
-        self.data = data
+    def __init__(self,
+                 data: list,
+                 is_subseq: bool,
+                 maxlen: int,
+                 batch_size: int,
+                 max_item: int,
+                 mode: str,
+                 model: Union[Ader],
+                 sess: tf.Session
+                 ) -> None:
+
         self.max_item = max_item
-        self.mode = mode
         self.model = model
         self.sess = sess
 
-        self.logs = logs
         self.ranks = []
-        self.recall_20 = 0
+        self.mode = mode
         self.desc = 'Validating epoch ' if mode == 'valid' else 'Testing epoch '
         self.evaluate_sampler = Sampler(data, maxlen, batch_size, is_subseq=is_subseq)
 
-    def evaluate(self, epoch):
-        """
-        This method only evaluate performance of predicted last item among all existing item.
-        :param exemplar: valid exemplar from previous period
-        :param epoch: current epoch
+    def evaluate(self,
+                 epoch: int
+                 ) -> str:
+        """ This method evaluates performance of predicted last item among all existing item.
+        Args:
+            epoch (int): Current epoch number for display.
+        Returns:
+            (str): Evaluation results information.
         """
         self.ranks = []
         batch_num = self.evaluate_sampler.batch_num()
@@ -318,10 +324,10 @@ class Evaluator:
             ground_truth = pos
             rank = [pred[index - 1] for pred, index in zip(predictions, ground_truth)]
             self.ranks.extend(rank)
-        self.display(epoch)
+        return self.display(epoch)
 
-    def results(self):
-        """ This method returns evaluation results (MRR@20, RECALL@20, MRR@10, RECALL@10)
+    def results(self) -> (float, float, float, float):
+        """ This method returns evaluation results (MRR@20, RECALL@20, MRR@10, RECALL@10).
         """
         valid_user = len(self.ranks)
         valid_ranks_20 = list(filter(lambda x: x < 20, self.ranks))
@@ -332,37 +338,44 @@ class Evaluator:
         MRR_10 = sum(map(lambda x: 1.0 / (x + 1), valid_ranks_10))
         return MRR_20 / valid_user, RECALL_20 / valid_user, MRR_10 / valid_user, RECALL_10 / valid_user
 
-    def display(self, epoch):
-        """
-        This method display and save evaluation metrics(MRR@20, RECALL@20, MRR@10, RECALL@10)
+    def display(self, epoch) -> str:
+        """ This method display and save evaluation metrics (MRR@20, RECALL@20, MRR@10, RECALL@10).
+        Returns:
+            info (str): Evaluation results information.
         """
         results = self.results()
         info = 'epoch:%d, %s (MRR@20: %.4f, RECALL@20: %.4f, MRR@10: %.4f, RECALL@10: %.4f)' \
                % (epoch, self.mode, results[0], results[1], results[2], results[3])
         print(info)
-        self.logs.write(info + '\n')
+        return info
 
 
 class ExemplarGenerator:
     """ This object select exemplars from given data.
     Args:
-        data (List): train data, valid data at current cycle and exemplar data from previous cycle in the
-            from of sub-sequence.
-
+        data (list): Training data and valid data at current cycle and exemplar data from previous cycle
+            in the from of sub-sequence.
+        exemplar size (int): The number of exemplars saved for each cycle.
+        disable_m (bool): If true, save the same number of exemplars for each item.
+        batch_size (int): Batch size to select exemplars.
+        maxlen (int): The number of accumulative items until current cycle.
+        dropout_rate (float): Dropout rate in trained model.
+        max_item (int): The number of accumulative items until current cycle.
     """
 
-    def __init__(self, data, exemplar_size, disable_m, batch_size, maxlen, dropout_rate, max_item, logs):
-        """
-        :param m: number of exemplars per item
-        :param data: train data, valid data at current cycle and exemplar data from previous cycle
-        :param max_item: accumulative number of item
-        :param logs: logs
-        """
-        self.exemplars = dict()
+    def __init__(self,
+                 data: list,
+                 exemplar_size: int,
+                 disable_m: bool,
+                 batch_size: int,
+                 maxlen: int,
+                 dropout_rate: float,
+                 max_item: int,
+                ) -> None:
+
+        self.exemplars = defaultdict(list)
         self.m = exemplar_size
-        self.data = data
         self.max_item = max_item
-        self.logs = logs
         self.item_count = np.zeros(max_item)
         self.dropout_rate = dropout_rate
 
@@ -379,21 +392,28 @@ class ExemplarGenerator:
                 self.sess_by_item[item].append(session)
                 self.item_count[item - 1] += 1
 
-        self.exemplars = defaultdict(list)
         if disable_m:
             self.item_count = np.ones_like(self.item_count)
         item_prob = self.item_count / self.item_count.sum()
         item_count = np.random.multinomial(n=self.m, pvals=item_prob, size=1)[0]
         self.item_count = np.int32(item_count)
 
-    def herding(self, rep, logits, item, seq, m):
-        """
-        Herding algorithm for exemplar selection
-        :param rep: representations
-        :param logits: logits
-        :param item: label
-        :param seq: input session (item sequence)
-        :param m: number of exemplar per label
+    def herding(self,
+                rep: np.ndarray,
+                logits: np.ndarray,
+                seq: np.ndarray,
+                item: int,
+                m: int
+                ) -> int:
+        """ Herding algorithm for exemplar selection.
+        Args:
+            rep (numpy.ndarray): Calculated representations by trained model.
+            logits (numpy.ndarray): Calculated logits by trained model.
+            seq (numpy.ndarray): Input sessions.
+            item (int): The index of item (lable) which the function selects exemplars for.
+            m (int): The number of exemplar per label
+        Returns:
+            counter (int): The number of exemplars saved for the given item or label.
         """
         # Initialize mean and selected ids
         D = rep.T / np.linalg.norm(rep.T, axis=0)
@@ -413,10 +433,15 @@ class ExemplarGenerator:
         self.exemplars[item] = [[seq[i][seq[i] != 0].tolist(), logits[i].tolist()] for i in selected_ids]
         return counter
 
-    def herding_selection(self, sess, model):
-        """
-        This method selects exemplars using herding and selects exemplars, the number of exemplars is proportional to
-        item frequency.
+    def herding_selection(self,
+                          sess: tf.Session,
+                          model: Union[Ader]):
+        """ This method selects exemplars using herding and selects exemplars.
+        Args:
+            sess (tf.Session): Tensorflow session.
+            model (object): Trained model for evaluate.
+        Returns:
+            saved_num (int): Total number of exemplars saved for all items at current cycle.
         """
         saved_num = 0
         for item in tqdm(self.sess_by_item, ncols=70, leave=False, unit='b', desc='Selecting exemplar'):
@@ -430,15 +455,21 @@ class ExemplarGenerator:
                                                                model.is_training: False})
             rep = np.array(rep)
             logits = np.array(logits)
-            saved = self.herding(rep, logits, item, seq, min(m, len(seq)))
+            saved = self.herding(rep, logits, seq, item, min(m, len(seq)))
             saved_num += saved
-        print('Total saved exemplar: %d' % saved_num)
-        self.logs.write('Total saved exemplar: %d\n' % saved_num)
 
-    def loss_selection(self, sess, model):
-        """
-        This method selects exemplars by ranking loss, the number of exemplars is proportional to
-        item frequency.
+        return saved_num
+
+    def loss_selection(self,
+                       sess: tf.Session,
+                       model: Union[Ader]
+                       ) -> int:
+        """ This method selects exemplars by ranking loss.
+        Args:
+            sess (tf.Session): Tensorflow session.
+            model (object): Trained model for evaluate.
+        Returns:
+            saved_num (int): Total number of exemplars saved for all items at current cycle.
         """
         saved_num = 0
         for item in tqdm(self.sess_by_item, ncols=70, leave=False, unit='b', desc='Selecting exemplar'):
@@ -458,12 +489,18 @@ class ExemplarGenerator:
             selected_ids = loss.argsort()[:int(min(m, seq_num))]
             self.exemplars[item] = [[seq[i][seq[i] != 0].tolist(), logits[i].tolist()] for i in selected_ids]
             saved_num += len(selected_ids)
-        print('Total saved exemplar: %d' % saved_num)
-        self.logs.write('Total saved exemplar: %d\n' % saved_num)
+        return saved_num
 
-    def randomly_selection(self, sess, model):
-        """
-        This method randomly selects exemplars, and selects equivalent number of exemplar for each label.
+    def randomly_selection(self,
+                           sess: tf.Session,
+                           model: Union[Ader]
+                           ) -> int:
+        """ This method randomly selects exemplars.
+        Args:
+            sess (tf.Session): Tensorflow session.
+            model (object): Trained model for evaluate.
+        Returns:
+            saved_num (int): Total number of exemplars saved for all items at current cycle.
         """
         saved_num = 0
         for item in tqdm(self.sess_by_item, ncols=70, leave=False, unit='b', desc='Selecting exemplar'):
@@ -482,5 +519,4 @@ class ExemplarGenerator:
                 for s, l in zip(selected_seq, logits):
                     self.exemplars[item].append([s[s != 0].tolist(), l.tolist()])
                     saved_num += 1
-        print('Total saved exemplar: %d' % saved_num)
-        self.logs.write('Total saved exemplar: %d\n' % saved_num)
+        return saved_num

@@ -3,10 +3,9 @@
 # @Project      : ADER
 # @File         : ADER.py
 # @Description  : ADER model file.
-# @Author       : Xiaoyu Lin
 # The implemention of self-attentive recommender is modified based on https://github.com/kang205/SASRec
+
 from modules import *
-from util import *
 import tensorflow.compat.v1 as tf
 import tqdm
 

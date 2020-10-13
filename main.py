@@ -3,7 +3,7 @@
 # @Project      : ADER
 # @File         : main.py
 # @Description  : main file for training ADER
-# @Author       : Xiaoyu Lin
+
 import argparse
 import os
 import math
@@ -16,11 +16,12 @@ import gc
 import time
 
 
-def str2bool(v):
-    """
-    Convert string to boolean
-    :param v: string
-    :return: boolean True or False
+def str2bool(v: str) -> bool:
+    """ Convert string to boolean.
+        Args:
+            v (string): string
+        Return:
+            (boolean): True or False
     """
     if isinstance(v, bool):
         return v
@@ -32,16 +33,16 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-def get_periods(dataset, logs):
+def get_periods(dataset: str) -> list:
+    """ Get list of periods for continue learning.
+    Args:
+        dataset (str): Name of dataset, in ['DIGINETICA', 'YOOCHOOSE'].
+    Returns:
+        periods (list): list of period in the form of [1, 2, ..., period_num].
     """
-    This function returns list of periods for joint learning or continue learning
-    :return: [0] for joint learning,
-             [1, 2, ..., period_num] for continue learning
-    """
-    # if continue learning: periods = [1, 2, ..., period_num]
+    # For continue learning: periods = [1, 2, ..., period_num]
     datafiles = os.listdir(os.path.join('..', '..', 'data', dataset))
     period_num = int(len(list(filter(lambda file: file.endswith(".txt"), datafiles))))
-    logs.write('\nContinue Learning: Number of periods is %d.\n' % period_num)
     periods = range(1, period_num)
     #  create dictionary to save model
     for period in periods:
@@ -50,16 +51,15 @@ def get_periods(dataset, logs):
     return periods
 
 
-def load_exemplars(fast_exemplar):
-    """
-    This method load exemplar in previous period
-    :param fast_exemplar: read exemplar directly from previous exemplar variable if None read from .pickle file
-    :return: exemplar list
+def load_exemplars(exemplar_pre: dict) -> list:
+    """ Load exemplar in previous cycle.
+    Args:
+        exemplar_pre (dict): Exemplars from previous cycle in the form of {item_id: [session, session,...], ...}
+    Returns:
+        exemplars (list): Exemplars list in the form of [session, session]
     """
     exemplars = []
-    exemplars_item = fast_exemplar
-
-    for item in exemplars_item.values():
+    for item in exemplar_pre.values():
         if isinstance(item, list):
             exemplars.extend([i for i in item if i])
     return exemplars
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default='DIGINETICA', type=str)  # name of dataset 'DIGINETICA' or 'YOOCHOOSE'
+    parser.add_argument('--dataset', default='DIGINETICA', type=str)  # name of dataset ['DIGINETICA', 'YOOCHOOSE']
     parser.add_argument('--save_dir', default='ADER', type=str)  # name of dictionary save the results
     # exemplar
     parser.add_argument('--exemplar_size', default=30000, type=int)  # size of exemplars
@@ -85,7 +85,7 @@ if __name__ == '__main__':
     parser.add_argument('--joint', default=False, type=bool)  # use joint learning
     parser.add_argument('--ewc_sample_num', default=1000, type=int)  # number of exemplars to generate fisher info
     # ablation study
-    parser.add_argument('--selection', default='herding', type=str)  # ['herding', 'loss', 'random']
+    parser.add_argument('--selection', default='herding', type=str)  # in ['herding', 'loss', 'random']
     parser.add_argument('--disable_distillation', default=False, type=bool)  # If true, disable knowledge distillation
     parser.add_argument('--equal_exemplar', default=False, type=bool)
     parser.add_argument('--fix_lambda', default=False, type=bool)
@@ -114,7 +114,7 @@ if __name__ == '__main__':
 
     # Record logs
     logs = open('Training_logs.txt', mode='w')
-    logs.write(' '.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
+    logs.write('\n'.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
 
     # For reproducibility
     os.environ['CUDA_VISIBLE_DEVICES'] = str(args.device_num)
@@ -136,14 +136,17 @@ if __name__ == '__main__':
         item_num = 25958    # number of items in YOOCHOOSE
     else:
         raise ValueError('Invalid dataset name')
+
     # Disable dropout for EWC and fine-tune baseline
     args.dropout_rate = 0 if (args.ewc or args.finetune) else args.dropout_rate
-
+    # Initialize model
     with tf.device('/gpu:%d' % args.device_num):
         model = Ader(item_num, args) if not args.ewc else Ewc(item_num, args)
 
     # Loop each period for continue learning
-    periods = get_periods(args.dataset, logs)
+    periods = get_periods(args.dataset)
+    print('Continue Learning: number of periods is %d.' % len(periods))
+    logs.write('Continue Learning: number of periods is %d.\n' % len(periods))
     dataloader = DataLoader(args.dataset)
     best_epoch, item_num_prev = 0, 0
     t_start = time.time()
@@ -199,7 +202,7 @@ if __name__ == '__main__':
         else:
             model.set_vanilla_loss()
 
-        # Start of the main algorithm
+        # Start of the main training
         with tf.Session(config=config) as sess:
 
             # initialize variables or reload from previous period
@@ -258,8 +261,9 @@ if __name__ == '__main__':
 
                 # validate performance
                 valid_evaluator = Evaluator(valid_subseq, True, args.maxlen, args.test_batch,
-                                            max_item, 'valid', model, sess, logs)
-                valid_evaluator.evaluate(epoch)
+                                            max_item, 'valid', model, sess)
+                info = valid_evaluator.evaluate(epoch)
+                logs.write(info + '\n')
                 performance = valid_evaluator.results()[1]
 
                 # early stop
@@ -276,33 +280,37 @@ if __name__ == '__main__':
             # test performance
             saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
             test_evaluator = Evaluator(test_sess, False, args.maxlen, args.test_batch,
-                                       max_item, 'test', model, sess, logs)
-            test_evaluator.evaluate(best_epoch)
+                                       max_item, 'test', model, sess)
+            info = test_evaluator.evaluate(best_epoch)
+            logs.write(info + '\n')
             MRR_20.append(test_evaluator.results()[0])
             Recall_20.append(test_evaluator.results()[1])
             MRR_10.append(test_evaluator.results()[2])
             Recall_10.append(test_evaluator.results()[3])
 
-            # save exemplars
+            # select exemplars
             if not (args.dropout or args.finetune or args.joint):
                 exemplar_candidate = train_subseq
                 exemplar_candidate.extend(valid_subseq)
                 exemplar_candidate.extend(exemplar_subseq)
                 exemplar = ExemplarGenerator(exemplar_candidate,
                                              args.exemplar_size, args.equal_exemplar, args.batch_size, args.maxlen,
-                                             args.dropout_rate, max_item, logs)
+                                             args.dropout_rate, max_item)
                 if args.selection == 'herding':
-                    exemplar.herding_selection(sess, model)
+                    saved_num = exemplar.herding_selection(sess, model)
                 elif args.selection == 'loss':
-                    exemplar.loss_selection(sess, model)
+                    saved_num = exemplar.loss_selection(sess, model)
                 elif args.selection == 'random':
-                    exemplar.randomly_selection(sess, model)
+                    saved_num = exemplar.randomly_selection(sess, model)
                 else:
                     print("Invalid exemplar selection method")
+                info = 'Total saved exemplar: %d' % saved_num
+                print(info)
+                logs.write(info + '\n')
                 fast_exemplar = exemplar.exemplars
                 del exemplar
 
-            # save current meta-data for next cycle
+            # save current item number for next cycle
             item_num_prev = max_item
 
             # if use ewc method, calculate fisher and save variable for the next sample
