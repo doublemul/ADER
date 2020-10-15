@@ -18,10 +18,10 @@ import time
 
 def str2bool(v: str) -> bool:
     """ Convert string to boolean.
-    Args:
-        v (str): String.
-    Returns:
-        (bool): True or False.
+        Args:
+            v (str): String.
+        Returns:
+            (bool): True or False.
     """
     if isinstance(v, bool):
         return v
@@ -35,10 +35,10 @@ def str2bool(v: str) -> bool:
 
 def get_periods(dataset: str) -> list:
     """ Get list of periods for continue learning.
-    Args:
-        dataset (str): Name of dataset, in ['DIGINETICA', 'YOOCHOOSE'].
-    Returns:
-        periods (list): list of period in the form of [1, 2, ..., period_num].
+        Args:
+            dataset (str): Name of dataset, in ['DIGINETICA', 'YOOCHOOSE'].
+        Returns:
+            periods (list): list of period in the form of [1, 2, ..., period_num].
     """
     # For continue learning: periods = [1, 2, ..., period_num]
     datafiles = os.listdir(os.path.join('..', '..', 'data', dataset))
@@ -53,10 +53,10 @@ def get_periods(dataset: str) -> list:
 
 def load_exemplars(exemplar_pre: dict) -> list:
     """ Load exemplar in previous cycle.
-    Args:
-        exemplar_pre (dict): Exemplars from previous cycle in the form of {item_id: [session, session,...], ...}
-    Returns:
-        exemplars (list): Exemplars list in the form of [session, session]
+        Args:
+            exemplar_pre (dict): Exemplars from previous cycle in the form of {item_id: [session, session,...], ...}
+        Returns:
+            exemplars (list): Exemplars list in the form of [session, session]
     """
     exemplars = []
     for item in exemplar_pre.values():
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', default='DIGINETICA', type=str)  # name of dataset ['DIGINETICA', 'YOOCHOOSE']
+    parser.add_argument('--dataset', default='DIGINETICA', type=str)  # name of dataset in ['DIGINETICA', 'YOOCHOOSE']
     parser.add_argument('--save_dir', default='ADER', type=str)  # name of dictionary save the results
     # exemplar
     parser.add_argument('--exemplar_size', default=30000, type=int)  # size of exemplars
@@ -86,9 +86,9 @@ if __name__ == '__main__':
     parser.add_argument('--ewc_sample_num', default=1000, type=int)  # number of exemplars to generate fisher info
     # ablation study
     parser.add_argument('--selection', default='herding', type=str)  # in ['herding', 'loss', 'random']
-    parser.add_argument('--disable_distillation', default=False, type=bool)  # If true, disable knowledge distillation
-    parser.add_argument('--equal_exemplar', default=False, type=bool)
-    parser.add_argument('--fix_lambda', default=False, type=bool)
+    parser.add_argument('--disable_distillation', default=False, type=bool)  # if true, disable knowledge distillation
+    parser.add_argument('--equal_exemplar', default=False, type=bool)  # if true, save equal number of exemplars per item
+    parser.add_argument('--fix_lambda', default=False, type=bool) # if true, fix the adaptive weight
     # batch size and device setup
     parser.add_argument('--num_epochs', default=100, type=int)
     parser.add_argument('--batch_size', default=256, type=int)
@@ -205,14 +205,14 @@ if __name__ == '__main__':
         # Start of the main training
         with tf.Session(config=config) as sess:
 
-            # initialize variables or reload from previous period
+            # Initialize variables or reload from previous period
             saver = tf.train.Saver(max_to_keep=1)
-            if period > 1:
+            if period > 1 and not args.joint:
                 saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period - 1, best_epoch))
             else:
                 sess.run(tf.global_variables_initializer())
 
-            # train
+            # Train
             best_epoch = 1
             for epoch in range(1, args.num_epochs + 1):
 
@@ -223,6 +223,8 @@ if __name__ == '__main__':
                     seq, pos = train_sampler.sampler()
 
                     if period > 1 and not (args.finetune or args.dropout or args.joint or args.ewc):
+
+                        # load exemplar batch
                         ex_seq, ex_pos, logits = exemplar_sampler.exemplar_sampler()
                         seq = seq + ex_seq
 
@@ -245,7 +247,7 @@ if __name__ == '__main__':
                                                       model.dropout_rate: args.dropout_rate,
                                                       model.lr: args.lr})
                     else:
-                        # without using exemplar for initial cycle and baselines
+                        # without using exemplar, for initial cycle and baselines
                         sess.run(model.train_op, {model.input_seq: seq,
                                                   model.pos: pos,
                                                   model.is_training: True,
@@ -277,7 +279,7 @@ if __name__ == '__main__':
                     best_performance = performance
                     saver.save(sess, 'model/period%d/epoch=%d.ckpt' % (period, epoch))
 
-            # test performance
+            # Test performance
             saver.restore(sess, 'model/period%d/epoch=%d.ckpt' % (period, best_epoch))
             test_evaluator = Evaluator(test_sess, False, args.maxlen, args.test_batch,
                                        max_item, 'test', model, sess)
@@ -288,7 +290,7 @@ if __name__ == '__main__':
             MRR_10.append(test_evaluator.results()[2])
             Recall_10.append(test_evaluator.results()[3])
 
-            # select exemplars
+            # Select exemplars
             if not (args.dropout or args.finetune or args.joint):
                 exemplar_candidate = train_subseq
                 exemplar_candidate.extend(valid_subseq)
@@ -310,10 +312,10 @@ if __name__ == '__main__':
                 fast_exemplar = exemplar.exemplars
                 del exemplar
 
-            # save current item number for next cycle
+            # Save current item number for next cycle
             item_num_prev = max_item
 
-            # if use ewc method, calculate fisher and save variable for the next sample
+            # If use ewc method, calculate fisher and save variable for the next sample
             if args.ewc:
                 exemplar_subseq = np.array(load_exemplars(fast_exemplar))[:, 0].tolist()
                 model.variables_prev = sess.run(model.variables)

@@ -106,8 +106,7 @@ class Ader():
         self.train_op = self.optimizer.minimize(self.loss, global_step=self.global_step)
 
     def update_loss(self, lambda_):
-        """
-        Update exemplar loss
+        """ Update exemplar loss
         """
         # find the number of train data from current cycle
         if self.args.disable_distillation:
@@ -139,8 +138,7 @@ class Ader():
         self.train_op = self.optimizer.minimize(self.exemp_loss, global_step=self.global_step)
 
     def predict(self, sess, seq, item_idx):
-        """
-        Predict next item
+        """ Predict next item
         :param sess: TensorFlow session
         :param seq: input item sequence (session)
         :param item_idx: candidate item index

@@ -16,8 +16,8 @@ from ADER import Ader
 
 class DataLoader:
     """ DataLoader object to load train, valid and test data from dataset.
-    Args:
-        dataset (str): Name of the dataset.
+        Args:
+            dataset (str): Name of the dataset.
     """
 
     def __init__(self,
@@ -33,11 +33,11 @@ class DataLoader:
                      period: int
                      ) -> (list, str):
         """ Load train data of specific period.
-        Args:
-            period (int): The period which load training data from.
-        Returns:
-            sessions (list): Training item sequences (session) of selected periods.
-            info (str): Information of training data.
+            Args:
+                period (int): The period which load training data from.
+            Returns:
+                sessions (list): Training item sequences (session) of selected periods.
+                info (str): Information of training data.
         """
         Sessions = defaultdict(list)
         file_name = '/period_%d.txt' % period
@@ -61,11 +61,11 @@ class DataLoader:
                         period: int,
                         ) -> (list, str):
         """ This method loads test data of specific period.
-        Args:
-            period (int): The period which load testing data from.
-        Returns:
-            sessions (list): Testing item sequences (session) of selected periods.
-            info (str): Information of testing data.
+            Args:
+                period (int): The period which load testing data from.
+            Returns:
+                sessions (list): Testing item sequences (session) of selected periods.
+                info (str): Information of testing data.
         """
         Sessions = defaultdict(list)
         removed_num = 0
@@ -110,12 +110,12 @@ class DataLoader:
 class Sampler:
     """ This object samples data and generates positive labels for train, valid and test data,
             as well as negative sample for training data.
-    Args:
-        data (list): Original data needs to be sampled.
-        maxlen (int): The input length of each sequence for the model.
-        batch_size (int): The number of data in one batch.
-        is_subseq (bool): If True, the given data is sub-sequence. If False, the given data is full
-            original data.
+        Args:
+            data (list): Original data needs to be sampled.
+            maxlen (int): The input length of each sequence for the model.
+            batch_size (int): The number of data in one batch.
+            is_subseq (bool): If True, the given data is sub-sequence. If False, the given data is full
+                original data.
     """
 
     def __init__(self,
@@ -152,11 +152,11 @@ class Sampler:
                         session: list,
                         ) -> (list, int):
         """ This method split sessions into input sequence and labels.
-        Args:
-            session (list): Original sub-sequence of different length.
-        Return:
-            seq (list): The input sequence with fixed length set by maxlen.
-            pos (int): Label (item number).
+            Args:
+                session (list): Original sub-sequence of different length.
+            Return:
+                seq (list): The input sequence with fixed length set by maxlen.
+                pos (int): Label (item number).
         """
         seq = np.zeros([self.maxlen], dtype=np.int32)
         pos = np.array(session[-1], dtype=np.int32)
@@ -174,8 +174,8 @@ class Sampler:
                      exemplar: list
                      ) -> None:
         """ Add exemplar data and logits from previous cycle model
-        Args:
-             exemplar (list): Exemplar data and corresponding logits.
+            Args:
+                 exemplar (list): Exemplar data and corresponding logits.
         """
         self.logits = []
         for session, logits in exemplar:
@@ -190,12 +190,12 @@ class Sampler:
                    return_train: bool = False
                    ) -> Union[list, tuple]:
         """ Split data into valid and train dataset and remove validation data from original training data.
-        Args:
-            valid_portion (float): The portion of validation dataset w.r.t entire dataset.
-            return_train: If True, return validation data and train data, else only return validation data.
-        Returns:
-            valid_data (list): Validation sub-sequence.
-            train_data (list): Training sub-sequence.
+            Args:
+                valid_portion (float): The portion of validation dataset w.r.t entire dataset.
+                return_train: If True, return validation data and train data, else only return validation data.
+            Returns:
+                valid_data (list): Validation sub-sequence.
+                train_data (list): Training sub-sequence.
         """
 
         data_size = len(self.prepared_data)
@@ -217,8 +217,8 @@ class Sampler:
 
     def sampler(self) -> Union[Iterable[Tuple[list, int]]]:
         """ This method returns a batch of sample: N * (sequence, label).
-        Returns:
-            one_batch (list): One batch of data in the size of N * (sequence length, 1).
+            Returns:
+                one_batch (list): One batch of data in the size of N * (sequence length, 1).
         """
         one_batch = []
         for i in range(self.batch_size):
@@ -240,8 +240,8 @@ class Sampler:
 
     def exemplar_sampler(self) -> Iterable[Tuple[list, int, list]]:
         """ This method returns a batch of exemplar data: N * (exemplar, logits).
-        Return:
-            one_batch (list): One batch of data in the size of N * (sequence length, previous item number).
+            Return:
+                one_batch (list): One batch of data in the size of N * (sequence length, previous item number).
         """
         one_batch = []
         for i in range(self.batch_size):
@@ -275,15 +275,15 @@ class Sampler:
 
 class Evaluator:
     """ This object evaluates performance on valid or test data.
-    Args:
-        data (list): Data to evaluate, valid data or test data.
-        is_subseq (bool): If true, the data to evaluate is sub-sequence, else is full sequence.
-        maxlen (int): The input length of each sequence for the model.
-        batch_size (int): Batch size for test.
-        max_item (int): The number of accumulative items until current cycle.
-        mode (str): ['valid', 'test'] for display.
-        model (Ader): Trained model for evaluate.
-        sess (tf.Session): Tensorflow session.
+        Args:
+            data (list): Data to evaluate, valid data or test data.
+            is_subseq (bool): If true, the data to evaluate is sub-sequence, else is full sequence.
+            maxlen (int): The input length of each sequence for the model.
+            batch_size (int): Batch size for test.
+            max_item (int): The number of accumulative items until current cycle.
+            mode (str): ['valid', 'test'] for display.
+            model (Ader): Trained model for evaluate.
+            sess (tf.Session): Tensorflow session.
     """
 
     def __init__(self,
@@ -310,10 +310,10 @@ class Evaluator:
                  epoch: int
                  ) -> str:
         """ This method evaluates performance of predicted last item among all existing item.
-        Args:
-            epoch (int): Current epoch number for display.
-        Returns:
-            (str): Evaluation results information.
+            Args:
+                epoch (int): Current epoch number for display.
+            Returns:
+                (str): Evaluation results information.
         """
         self.ranks = []
         batch_num = self.evaluate_sampler.batch_num()
@@ -340,8 +340,8 @@ class Evaluator:
 
     def display(self, epoch) -> str:
         """ This method display and save evaluation metrics (MRR@20, RECALL@20, MRR@10, RECALL@10).
-        Returns:
-            info (str): Evaluation results information.
+            Returns:
+                info (str): Evaluation results information.
         """
         results = self.results()
         info = 'epoch:%d, %s (MRR@20: %.4f, RECALL@20: %.4f, MRR@10: %.4f, RECALL@10: %.4f)' \
@@ -352,15 +352,15 @@ class Evaluator:
 
 class ExemplarGenerator:
     """ This object select exemplars from given data.
-    Args:
-        data (list): Training data and valid data at current cycle and exemplar data from previous cycle
-            in the from of sub-sequence.
-        exemplar size (int): The number of exemplars saved for each cycle.
-        disable_m (bool): If true, save the same number of exemplars for each item.
-        batch_size (int): Batch size to select exemplars.
-        maxlen (int): The number of accumulative items until current cycle.
-        dropout_rate (float): Dropout rate in trained model.
-        max_item (int): The number of accumulative items until current cycle.
+        Args:
+            data (list): Training data and valid data at current cycle and exemplar data from previous cycle
+                in the from of sub-sequence.
+            exemplar size (int): The number of exemplars saved for each cycle.
+            disable_m (bool): If true, save the same number of exemplars for each item.
+            batch_size (int): Batch size to select exemplars.
+            maxlen (int): The number of accumulative items until current cycle.
+            dropout_rate (float): Dropout rate in trained model.
+            max_item (int): The number of accumulative items until current cycle.
     """
 
     def __init__(self,
@@ -406,14 +406,14 @@ class ExemplarGenerator:
                 m: int
                 ) -> int:
         """ Herding algorithm for exemplar selection.
-        Args:
-            rep (numpy.ndarray): Calculated representations by trained model.
-            logits (numpy.ndarray): Calculated logits by trained model.
-            seq (numpy.ndarray): Input sessions.
-            item (int): The index of item (lable) which the function selects exemplars for.
-            m (int): The number of exemplar per label
-        Returns:
-            counter (int): The number of exemplars saved for the given item or label.
+            Args:
+                rep (numpy.ndarray): Calculated representations by trained model.
+                logits (numpy.ndarray): Calculated logits by trained model.
+                seq (numpy.ndarray): Input sessions.
+                item (int): The index of item (lable) which the function selects exemplars for.
+                m (int): The number of exemplar per label
+            Returns:
+                counter (int): The number of exemplars saved for the given item or label.
         """
         # Initialize mean and selected ids
         D = rep.T / np.linalg.norm(rep.T, axis=0)
@@ -437,11 +437,11 @@ class ExemplarGenerator:
                           sess: tf.Session,
                           model: Union[Ader]):
         """ This method selects exemplars using herding and selects exemplars.
-        Args:
-            sess (tf.Session): Tensorflow session.
-            model (object): Trained model for evaluate.
-        Returns:
-            saved_num (int): Total number of exemplars saved for all items at current cycle.
+            Args:
+                sess (tf.Session): Tensorflow session.
+                model (object): Trained model for evaluate.
+            Returns:
+                saved_num (int): Total number of exemplars saved for all items at current cycle.
         """
         saved_num = 0
         for item in tqdm(self.sess_by_item, ncols=70, leave=False, unit='b', desc='Selecting exemplar'):
@@ -465,11 +465,11 @@ class ExemplarGenerator:
                        model: Union[Ader]
                        ) -> int:
         """ This method selects exemplars by ranking loss.
-        Args:
-            sess (tf.Session): Tensorflow session.
-            model (object): Trained model for evaluate.
-        Returns:
-            saved_num (int): Total number of exemplars saved for all items at current cycle.
+            Args:
+                sess (tf.Session): Tensorflow session.
+                model (object): Trained model for evaluate.
+            Returns:
+                saved_num (int): Total number of exemplars saved for all items at current cycle.
         """
         saved_num = 0
         for item in tqdm(self.sess_by_item, ncols=70, leave=False, unit='b', desc='Selecting exemplar'):
@@ -496,11 +496,11 @@ class ExemplarGenerator:
                            model: Union[Ader]
                            ) -> int:
         """ This method randomly selects exemplars.
-        Args:
-            sess (tf.Session): Tensorflow session.
-            model (object): Trained model for evaluate.
-        Returns:
-            saved_num (int): Total number of exemplars saved for all items at current cycle.
+            Args:
+                sess (tf.Session): Tensorflow session.
+                model (object): Trained model for evaluate.
+            Returns:
+                saved_num (int): Total number of exemplars saved for all items at current cycle.
         """
         saved_num = 0
         for item in tqdm(self.sess_by_item, ncols=70, leave=False, unit='b', desc='Selecting exemplar'):
