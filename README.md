@@ -105,12 +105,10 @@ preference patterns learned before.
 
 ```bibtex
 @inproceedings{mi2020ader,
-    author = {Mi, Fei and Lin, Xiaoyu and Faltings, Boi},
-    title = {ADER: Adaptively Distilled Exemplar Replay Towards Continual Learning for Session-Based Recommendation},
-    year = {2020},
-    booktitle = {Fourteenth ACM Conference on Recommender Systems},
-    pages = {408–413},
-    numpages = {6},
-    series = {RecSys '20}
-    }
+  title={Ader: Adaptively distilled exemplar replay towards continual learning for session-based recommendation},
+  author={Mi, Fei and Lin, Xiaoyu and Faltings, Boi},
+  booktitle={Fourteenth ACM Conference on Recommender Systems},
+  pages={408--413},
+  year={2020}
+}
 ```
