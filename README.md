@@ -76,17 +76,17 @@ python main.py --dataset=YOOCHOOSE --lambda_=1.0 --batch_size=512 --test_batch=6
 ## Baseline Methods and Ablation Study
 - We provide four baseline methods for comprehensive analysis. To test baseline methods, please run from 
 the root of the project:
-    - *Finetune:* ``python main.py --finetune=True --save_dir=finetune``
-    - *Dropout:* ``python main.py --dropout=True --save_dir=dropout``
-    - *EWC:* ``python main.py --ewc=True --save_dir=ewc``
-    - *Joint:* ``python main.py --joint=True --save_dir=joint``
+    - *Finetune :* ``python main.py --finetune=True --save_dir=finetune``
+    - *Dropout :* ``python main.py --dropout=True --save_dir=dropout``
+    - *EWC :* ``python main.py --ewc=True --save_dir=ewc``
+    - *Joint :* ``python main.py --joint=True --save_dir=joint``
 - We also provide some in-depth analysis and ablation study models for users to run and test:
-    - *Different number of exemplars (e.g. 20k):* ``python main.py --exemplar_size=20000 --save_dir=exemplar20k``
-    - *ER<sub>hering</sub>:* ``python main.py --disable_distillation=True --save_dir=ER-herding``
-    - *ER<sub>loss</sub>:* ``python main.py --disable_distillation=True --selection=loss --save_dir=ER-loss``
-    - *ER<sub>random</sub>:* ``python main.py --disable_distillation=True --selection=random --save_dir=ER-random``
-    - *ADER<sub>equal</sub>:* ``python main.py --equal_exemplar=True --save_dir=equal_exemplar``
-    - *ADER<sub>fix</sub>:* ``python main.py --fix_lambda=True --save_dir=fix_lambda``
+    - *Different number of exemplars (e.g. 20k) :* ``python main.py --exemplar_size=20000 --save_dir=exemplar20k``
+    - *ER<sub>hering</sub> :* ``python main.py --disable_distillation=True --save_dir=ER-herding``
+    - *ER<sub>loss</sub> :* ``python main.py --disable_distillation=True --selection=loss --save_dir=ER-loss``
+    - *ER<sub>random</sub> :* ``python main.py --disable_distillation=True --selection=random --save_dir=ER-random``
+    - *ADER<sub>equal</sub> :* ``python main.py --equal_exemplar=True --save_dir=equal_exemplar``
+    - *ADER<sub>fix</sub> :* ``python main.py --fix_lambda=True --save_dir=fix_lambda``
 - **Notes:** 
     - The dropout rate can be set by changing the argument `--dropout_rate`, 
 and the hyper-parameter *lambda* in EWC can be set by changing the argument `--lambda_`. You may fine tune these 
