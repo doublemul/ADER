@@ -2,8 +2,9 @@
 **EPFL | [Artificial Intelligence Laboratory (LIA)](https://lia.epfl.ch/) | Semester Project (Spring 2020)**  
 **[RecSys 2020](https://recsys.acm.org/recsys20/) | Best Short Paper**
 
-![Python 3.7](https://img.shields.io/badge/python-3.7-blue.svg?style=plastic)
-![tensorflow 2.1.0](https://img.shields.io/badge/tensorflow-2.1.0-yellow.svg?style=plastic)
+![python 3.7](https://img.shields.io/badge/python-3.7-blue.svg)
+![tensorflow 2.1.0](https://img.shields.io/badge/tensorflow-2.1.0-yellow.svg)
+![cuda 10.0](https://img.shields.io/badge/cuda-10.0-green.svg)
 
 ## About
 - This is our implementation for the paper:  
