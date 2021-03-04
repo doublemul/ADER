@@ -110,7 +110,7 @@ preference patterns learned before.
 @inproceedings{mi2020ader,
   title={Ader: Adaptively distilled exemplar replay towards continual learning for session-based recommendation},
   author={Mi, Fei and Lin, Xiaoyu and Faltings, Boi},
-  booktitle={Fourteenth ACM Conference on Recommender Systems},
+  booktitle={ACM Conference on Recommender Systems},
   pages={408--413},
   year={2020}
 }
