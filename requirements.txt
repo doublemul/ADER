@@ -1,4 +1,4 @@
 Keras==2.3.1
-numpy==1.17.4
+numpy==1.22.0
 tqdm==4.40.2
 tensorflow-determinism==0.3.0
